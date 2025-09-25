@@ -1,0 +1,110 @@
+:root {
+    --hud-bg: rgba(0, 0, 0, 0.6);
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background: #0b0f19;
+}
+
+#app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+#mapwrap {
+    position: relative;
+    height: 64vh;
+    min-height: 380px;
+}
+
+#map {
+    height: 100%;
+}
+
+#tablewrap {
+    height: 32vh;
+    min-height: 200px;
+    overflow: auto;
+    background: #0b0f19;
+    border-top: 1px solid #1f2937;
+}
+
+.hud, .legend {
+    position: absolute;
+    z-index: 10;
+    color: #fff;
+    background: var(--hud-bg);
+    padding: 6px 10px;
+    border-radius: 8px;
+    font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    backdrop-filter: blur(4px);
+}
+
+.hud {
+    top: 8px;
+    left: 8px;
+}
+
+.legend {
+    top: 8px;
+    right: 8px;
+}
+
+button {
+    all: unset;
+    cursor: pointer;
+    padding: 4px 8px;
+    background: #1f6feb;
+    border-radius: 6px;
+    margin-right: 6px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #e5e7eb;
+    font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+thead th {
+    position: sticky;
+    top: 0;
+    background: #111827;
+    color: #9ca3af;
+    text-align: left;
+    padding: 8px;
+    border-bottom: 1px solid #1f2937;
+}
+
+tbody td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #111827;
+    white-space: nowrap;
+}
+
+tbody tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+}
+
+.mono {
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.tag {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: #1f2937;
+    color: #cbd5e1;
+}
+
+.link {
+    color: #8ab4f8;
+    text-decoration: none;
+}

@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.css" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+    <div id="mapwrap">
+        <div id="map"></div>
+        <div class="hud">
+            <button id="play">Play</button><button id="pause">Pause</button>
+            <span id="clock"></span>
+        </div>
+        <div class="legend">
+            <div id="legend-content">Layer: __LAYER_MODE__ · Style: __MAP_STYLE_NAME__</div>
+            <div>Filters: mag [__MAG_MIN__, __MAG_MAX__], depth [__DEPTH_MIN__, __DEPTH_MAX__] km, tsunami-only: __TSUNAMI_ONLY__</div>
+            <div>Window: __START_ISO__ → __END_ISO__</div>
+        </div>
+    </div>
+
+    <div id="tablewrap">
+        <table id="event-table">
+            <thead>
+            <tr>
+                <th class="mono">UTC</th>
+                <th>Place</th>
+                <th class="mono">Mag</th>
+                <th class="mono">Depth (km)</th>
+                <th>Net</th>
+                <th>Tsu</th>
+                <th class="mono">Lon</th>
+                <th class="mono">Lat</th>
+                <th>Link</th>
+            </tr>
+            </thead>
+            <tbody id="event-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.js"></script>
+</body>
+</html>
