@@ -9,7 +9,7 @@ services:
       - "${PG_PORT}:5432"
     volumes:
       # Bind mount → your project folder (visible on disk)
-      - ./volume:/var/lib/postgresql/data/pgdata
+      - ./volume:/var/lib/postgresql
       # One-time init scripts. Anything in here runs on first boot (when no DB exists yet).
       - ./init:/docker-entrypoint-initdb.d:ro
     # basic health check for db
