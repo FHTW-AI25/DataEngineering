@@ -14,12 +14,22 @@ Follow these minimal steps to run the app. The app **must be started from the pr
 pip install -r requirements.txt
 ```
 
-## Set the Mapbox secret (once)
+### Set the Mapbox secret
 Create the file at `./streamlit/.streamlit/secrets.toml` with the key:
 ```toml
 MAPBOX_TOKEN = "<your-mapbox-token-here>"
 ```
 
+### Set DB credentials
+Add db credentials to `./streamlit/.streamlit/secrets.toml` file:
+```toml
+[postgres]
+host = "<host>" # e.g. localhost 
+port = 5432
+dbname = "<dbname>"
+user = "<dbuser>"
+password = "<dbpassword>"
+```
 > The file and folder must live at the **streamlit** root of the project.
 
 ### Start the app from the project root
