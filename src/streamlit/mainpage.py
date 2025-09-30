@@ -11,6 +11,7 @@ st.set_page_config(page_title="Earthquakes — JS in Streamlit (Pro)", layout="w
 cfg = render_sidebar()
 
 # Guard on invalid range
+# ToDo Sebastian maybe add more guards here
 if cfg.start_dt >= cfg.end_dt:
     st.sidebar.error("Start must be before end. Showing nothing until fixed.")
 else:

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime, date, time as dtime, timezone
 import streamlit as st
 
-from data_sources import DATA_SOURCES
+from data.data_sources import DATA_SOURCES
 
 @dataclass
 class AppConfig:
@@ -34,6 +34,18 @@ class AppConfig:
 
 def render_sidebar() -> AppConfig:
     st.sidebar.header("Data & Map")
+
+    st.sidebar.header("Playback")
+    speed_multiplier = st.sidebar.slider(
+        "Speed (hours/second)",
+        min_value=1,
+        max_value=10,
+        value=1,
+        step=1,
+        format="%dx"
+    )
+    # JS expects hours/second → treat 1x..10x as 1..10 hours/second
+    speed_hps = float(speed_multiplier)
 
     ds_choice = st.sidebar.selectbox("Data source", DATA_SOURCES, format_func=lambda d: d.name())
 
@@ -79,9 +91,6 @@ def render_sidebar() -> AppConfig:
     max_lon = col2.number_input("max lon", value=180.0, step=0.5, format="%.4f")
     max_lat = col2.number_input("max lat", value=85.0, step=0.5, format="%.4f")
     bbox = [min_lon, min_lat, max_lon, max_lat] if use_bbox else None
-
-    st.sidebar.header("Playback")
-    speed_hps = st.sidebar.selectbox("Speed (hours/second)", [0.25, 0.5, 1, 2, 4], index=2)
 
     return AppConfig(
         ds_choice=ds_choice,

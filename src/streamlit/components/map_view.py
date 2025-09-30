@@ -1,7 +1,6 @@
 from pathlib import Path
 import streamlit as st
-
-from utils import js_bool, js_str
+from utils.utils import fill_template_vars
 
 def render_map(cfg) -> None:
     # Load assets
@@ -14,31 +13,40 @@ def render_map(cfg) -> None:
     css  = css_path.read_text(encoding="utf-8")
     js   = js_path.read_text(encoding="utf-8")
 
-    # Fill template vars in JS
-    js = (
-        js
-        .replace("__MAPBOX_TOKEN__", js_str(cfg.mapbox_token))
-        .replace("__MAP_STYLE__", js_str(cfg.style_url))
-        .replace("__MAP_STYLE_NAME__", js_str(cfg.style_name))
-        .replace("__LAYER_MODE__", js_str(cfg.layer_mode))
-        .replace("__SPEED_HPS__", str(cfg.speed_hps))
-        .replace("__START_MS__", str(int(cfg.start_dt.timestamp() * 1000)))
-        .replace("__END_MS__", str(int(cfg.end_dt.timestamp() * 1000)))
-        .replace("__MAG_MIN__", str(cfg.mag_min))
-        .replace("__MAG_MAX__", str(cfg.mag_max))
-        .replace("__DEPTH_MIN__", str(cfg.depth_min))
-        .replace("__DEPTH_MAX__", str(cfg.depth_max))
-        .replace("__TSUNAMI_ONLY__", js_bool(cfg.tsunami_only))
-        .replace("__TEXT_QUERY__", js_str(cfg.text_query.strip().lower()))
-        .replace("__NETWORKS_JSON__", str([s.strip().lower() for s in cfg.networks_csv.split(",") if s.strip()]))
-        .replace("__BBOX_JSON__", "null" if cfg.bbox is None else str(cfg.bbox))
-        .replace("__DATA_ENDPOINT__", js_str(cfg.ds_choice.get_endpoint(
-            start_ms=int(cfg.start_dt.timestamp()*1000),
-            end_ms=int(cfg.end_dt.timestamp()*1000),
-        )))
-        .replace("__START_ISO__", cfg.start_dt.isoformat().replace("T"," ").replace("+00:00"," Z"))
-        .replace("__END_ISO__", cfg.end_dt.isoformat().replace("T"," ").replace("+00:00"," Z"))
-    )
+    # If this data source can fetch inline GeoJSON (ORM/DB), use it; else we’ll fetch via DATA_ENDPOINT.
+    # ToDo Sebastian adapt this here to only use db as datasource
+    inline_geojson = None
+    if hasattr(cfg.ds_choice, "fetch_geojson"):
+        try:
+            # fetch data from custom db
+            inline_geojson = cfg.ds_choice.fetch_geojson(
+                start_ms=int(cfg.start_dt.timestamp() * 1000),
+                end_ms=int(cfg.end_dt.timestamp() * 1000),
+                mag_min=cfg.mag_min,
+                mag_max=cfg.mag_max,
+                depth_min=cfg.depth_min,
+                depth_max=cfg.depth_max,
+                tsunami_only=cfg.tsunami_only,
+                text_query=cfg.text_query,
+                networks=[s.strip() for s in cfg.networks_csv.split(",") if s.strip()],
+                bbox=cfg.bbox,
+            )
+        except Exception as e:
+            # Fall back to endpoint if DB fetch fails
+            st.warning(f"DB inline fetch failed, falling back to HTTP endpoint: {e}")
+            inline_geojson = None
+
+    # Build DATA_ENDPOINT only if we are not using inline data
+    data_endpoint = ""
+    if inline_geojson is None:
+        data_endpoint = cfg.ds_choice.get_endpoint(
+            start_ms=int(cfg.start_dt.timestamp() * 1000),
+            end_ms=int(cfg.end_dt.timestamp() * 1000),
+        ) or ""
+
+    js = fill_template_vars(js, cfg, data_endpoint, inline_geojson)
+    html = fill_template_vars(html, cfg, data_endpoint, inline_geojson)
+
 
     # Inline CSS + JS into the HTML template
     html_inlined = (
