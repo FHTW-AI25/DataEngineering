@@ -49,7 +49,7 @@ This explains how to start the **PostgreSQL + PostGIS** service defined below an
 ### Prerequisites
 
 * Docker Desktop or Docker Engine + Compose
-* A `.env` file in the project root with at least:
+* A `.env` file in the db root with at least:
 
   ```dotenv
   POSTGRES_USER=your_user
