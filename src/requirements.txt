@@ -1,1 +1,6 @@
 streamlit
+sqlmodel
+sqlalchemy
+geoalchemy2
+# psycopg-binary
+psycopg2-binary
