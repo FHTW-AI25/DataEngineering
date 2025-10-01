@@ -74,26 +74,10 @@ When healthy, logs will settle and the healthcheck will report `healthy`.
 #### Check health
 
 ```bash
-docker ps --filter name=earthquakes-db --format 'table {{.Names}}\t{{.Status}}'
+docker ps --filter name=earthquakes-db'
 ```
 
 Look for `Up ... (healthy)`.
-
----
-
-#### Connect to the database
-
-**From your host (e.g., psql):**
-
-```bash
-psql "host=localhost port=$PG_PORT dbname=$POSTGRES_DB user=$POSTGRES_USER password=$POSTGRES_PASSWORD sslmode=disable"
-```
-
-**From inside the container (optional):**
-
-```bash
-docker exec -it earthquakes-db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
-```
 
 ---
 
@@ -111,7 +95,7 @@ All PostgreSQL data is persisted on your local machine in the project folder:
 ./db/volume/
 ```
 
-This host directory is bind‑mounted to the container path `/var/lib/postgresql/data/pgdata`. That means:
+This host directory is bind‑mounted to the container path `/var/lib/postgresql`. That means:
 
 * **Stop/start safe:** Restarting the container does not delete data.
 * **Rebuild safe:** Rebuilding the image does not affect data.
