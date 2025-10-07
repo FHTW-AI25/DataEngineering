@@ -3,37 +3,12 @@ from datetime import datetime, date, time as dtime, timezone
 import streamlit as st
 
 from data.data_sources import DATA_SOURCES
+from utils.types import AppConfig
 
-@dataclass
-class AppConfig:
-    # data source & tokens
-    ds_choice: object
-    mapbox_token: str
 
-    # map config
-    style_name: str
-    style_url: str
-    layer_mode: str
-
-    # time range
-    start_dt: datetime
-    end_dt: datetime
-
-    # filters
-    mag_min: float
-    mag_max: float
-    depth_min: float
-    depth_max: float
-    tsunami_only: bool
-    text_query: str
-    networks_csv: str
-    bbox: list | None
-
-    # playback
-    speed_hps: float
-
-def render_sidebar() -> AppConfig:
-    st.sidebar.header("Data & Map")
+def render_sidebar_return_config() -> AppConfig:
+    st.sidebar.header("Data & Map Configuration")
+    st.sidebar.divider()
 
     st.sidebar.header("Playback")
     speed_multiplier = st.sidebar.slider(
@@ -44,11 +19,12 @@ def render_sidebar() -> AppConfig:
         step=1,
         format="%dx"
     )
-    # JS expects hours/second → treat 1x..10x as 1..10 hours/second
+    # JS expects hours/second -> treat 1x..10x as 1..10 hours/second
     speed_hps = float(speed_multiplier)
 
     ds_choice = st.sidebar.selectbox("Data source", DATA_SOURCES, format_func=lambda d: d.name())
 
+    # Get mapbox token from secret file
     MAPBOX_TOKEN = st.secrets.get("MAPBOX_TOKEN", "")
 
     style_options = {
@@ -62,7 +38,7 @@ def render_sidebar() -> AppConfig:
     style_name = st.sidebar.selectbox("Map style", list(style_options.keys()), index=0)
     style_url = style_options[style_name]
 
-    layer_mode = st.sidebar.radio("Layer", ["bubbles", "heatmap"], index=0, horizontal=True)
+    layer_mode = st.sidebar.radio("Layer", ["Bubbles", "Heatmap"], index=0, horizontal=True)
 
     st.sidebar.header("Time range (UTC)")
     now = datetime.now(timezone.utc)
@@ -79,7 +55,7 @@ def render_sidebar() -> AppConfig:
 
     st.sidebar.header("Filters")
     mag_min, mag_max = st.sidebar.slider("Magnitude range", 0.0, 10.0, (0.0, 10.0), 0.1)
-    depth_min, depth_max = st.sidebar.slider("Depth range (km)", 0.0, 700.0, (0.0, 700.0), 10.0)
+    depth_min, depth_max = st.sidebar.slider("Depth range (km)", 0.0, 1000.0, (0.0, 1000.0), 10.0)
     tsunami_only = st.sidebar.checkbox("Tsunami only", value=False)
     text_query = st.sidebar.text_input("Text search in title/place (contains)", value="")
     networks_csv = st.sidebar.text_input("Restrict to networks (comma-separated, e.g., us,ak,pr)", value="")

@@ -28,20 +28,22 @@ def render_mag_hist(gj: Dict[str, Any]) -> None:
 
     try:
         df = features_to_dataframe(gj)
-        mag_df = df.dropna(subset=["mag"])
-        if mag_df.empty:
-            st.info("No magnitude data to plot.")
-            return
+        if not df.empty:
+            mag_df = df.dropna(subset=["mag"])
+            if mag_df.empty:
+                st.info("No magnitude data to plot.")
+                return
 
-        c1, c2, c3 = st.columns([1, 1, 2])
-        bins = c1.slider("Bins (mag)", 10, 60, 30, 5, key="mag_bins")
-        log_y = c2.checkbox("Log scale (Y)", value=False, key="mag_log_y")
+            c1, c2, c3 = st.columns([1, 1, 2])
+            bins = c1.slider("Bins (mag)", 10, 60, 30, 5, key="mag_bins")
+            log_y = c2.checkbox("Log scale (Y)", value=False, key="mag_log_y")
 
-        st.altair_chart(hist_chart(mag_df, "mag", bins, "Magnitude", log_y), use_container_width=True)
+            st.altair_chart(hist_chart(mag_df, "mag", bins, "Magnitude", log_y), use_container_width=True)
 
-        with st.expander("Summary stats", expanded=False):
-            st.write(mag_df["mag"].describe().to_frame("Magnitudes"))
-
+            with st.expander("Summary stats", expanded=False):
+                st.write(mag_df["mag"].describe().to_frame("Magnitudes"))
+        else:
+            st.info("No events found for selected filters.")
     except Exception as e:
         st.error(f"Failed to render magnitude histogram: {e}")
 
@@ -52,19 +54,21 @@ def render_depth_hist(gj: Dict[str, Any]) -> None:
 
     try:
         df = features_to_dataframe(gj)
-        depth_df = df[(df["depth_km"].notna()) & (df["depth_km"] >= 0)]
-        if depth_df.empty:
-            st.info("No depth data to plot.")
-            return
+        if not df.empty:
+            depth_df = df[(df["depth_km"].notna()) & (df["depth_km"] >= 0)]
+            if depth_df.empty:
+                st.info("No depth data to plot.")
+                return
 
-        c1, c2, c3 = st.columns([1, 1, 2])
-        bins = c1.slider("Bins (depth)", 10, 80, 40, 5, key="depth_bins")
-        log_y = c2.checkbox("Log scale (Y)", value=False, key="depth_log_y")
+            c1, c2, c3 = st.columns([1, 1, 2])
+            bins = c1.slider("Bins (depth)", 10, 80, 40, 5, key="depth_bins")
+            log_y = c2.checkbox("Log scale (Y)", value=False, key="depth_log_y")
 
-        st.altair_chart(hist_chart(depth_df, "depth_km", bins, "Depth (km)", log_y), use_container_width=True)
+            st.altair_chart(hist_chart(depth_df, "depth_km", bins, "Depth (km)", log_y), use_container_width=True)
 
-        with st.expander("Summary stats", expanded=False):
-            st.write(depth_df["depth_km"].describe().to_frame("Depth (km)"))
-
+            with st.expander("Summary stats", expanded=False):
+                st.write(depth_df["depth_km"].describe().to_frame("Depth (km)"))
+        else:
+            st.info("No events found for selected filters.")
     except Exception as e:
         st.error(f"Failed to render depth histogram: {e}")

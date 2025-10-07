@@ -1,13 +1,12 @@
 from pathlib import Path
 import streamlit as st
-from utils.utils import fill_template_vars  # your helper that replaces placeholders
+from utils.utils import fill_template_vars
 
 def render_map(cfg, gj) -> None:
     """
     Render the map using a pre-fetched GeoJSON FeatureCollection (gj).
-    No DB/HTTP calls happen here.
     """
-    # Load assets
+    # Load assets from components/html folder
     root = Path(__file__).resolve().parents[1]
     html_path = root / "components" / "html" / "earthquakes.html"
     css_path  = root / "components" / "html" / "earthquakes.css"
@@ -17,13 +16,11 @@ def render_map(cfg, gj) -> None:
     css  = css_path.read_text(encoding="utf-8")
     js   = js_path.read_text(encoding="utf-8")
 
-    # Inline-only mode: pass gj directly; leave endpoint empty
-    data_endpoint = ""
-    inline_geojson = gj or {"type": "FeatureCollection", "features": []}
+    geojson = gj or {"type": "FeatureCollection", "features": []}
 
     # Fill placeholders for BOTH JS and HTML
-    js   = fill_template_vars(js,   cfg, data_endpoint, inline_geojson)
-    html = fill_template_vars(html, cfg, data_endpoint, inline_geojson)
+    js   = fill_template_vars(js,   cfg, geojson)
+    html = fill_template_vars(html, cfg, geojson)
 
     # Inline CSS + JS into the HTML template
     html_inlined = (

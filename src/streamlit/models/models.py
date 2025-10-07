@@ -8,7 +8,6 @@ from geoalchemy2 import Geometry
 class Earthquake(SQLModel, table=True):
     """
     ORM for: usgs_quakes
-    Matches your init script (PostgreSQL + PostGIS).
     """
     __tablename__ = "usgs_quakes"
 

@@ -15,12 +15,8 @@ const TSUNAMI_ONLY = __TSUNAMI_ONLY__;  // true/false
 const TEXT_QUERY = __TEXT_QUERY__;      // lowercased substring or ''
 const NETWORKS = __NETWORKS_JSON__;     // array of strings
 const BBOX = __BBOX_JSON__;             // [minLon, minLat, maxLon, maxLat] or null
-const DATA_ENDPOINT = __DATA_ENDPOINT__; // where to fetch GeoJSON (same schema as USGS feed)
 
-// ToDo Sebastian adapt this here as well
-// NEW: inline-data mode (for ORM/DB source)
-const USE_INLINE = __USE_INLINE__;          // true/false
-const INLINE_GEOJSON = __INLINE_GEOJSON__;  // FeatureCollection or null
+const GEOJSON = __GEOJSON__;  // FeatureCollection or null
 
 if (!MAPBOX_TOKEN) {
     document.body.innerHTML =
@@ -51,38 +47,11 @@ function withinBBox(coord, bbox) {
     return lon >= minLon && lon <= maxLon && lat >= minLat && lat <= maxLat;
 }
 
-function featurePassesFilters(f) {
+function featurePassesTimeFilter(f) {
     const p = f.properties || {};
-    const g = f.geometry || {};
-    const coords = g.coordinates || [null, null, null];
 
     const time_ms = Number(p.time_ms || p.time || 0);
-    if (!(time_ms >= START_MS && time_ms <= Math.min(tNow, END_MS))) return false;
-
-    const mag = Number(p.mag ?? 0);
-    if (isFinite(MAG_MIN) && mag < MAG_MIN) return false;
-    if (isFinite(MAG_MAX) && mag > MAG_MAX) return false;
-
-    const depth = coords[2];
-    if (depth != null) {
-        if (isFinite(DEPTH_MIN) && depth < DEPTH_MIN) return false;
-        if (isFinite(DEPTH_MAX) && depth > DEPTH_MAX) return false;
-    }
-
-    if (TSUNAMI_ONLY && Number(p.tsunami || 0) !== 1) return false;
-
-    if (TEXT_QUERY?.length) {
-        const hay = String(p.title || p.place || '').toLowerCase();
-        if (!hay.includes(TEXT_QUERY)) return false;
-    }
-
-    if (NETWORKS?.length) {
-        const net = (p.net || '').toLowerCase();
-        if (!NETWORKS.includes(net)) return false;
-    }
-
-    if (!withinBBox(coords, BBOX)) return false;
-    return true;
+    return !(!(time_ms >= START_MS && time_ms <= Math.min(tNow, END_MS)));
 }
 
 function formatIso(ms) {
@@ -154,25 +123,18 @@ function normalizeFeatures(gj) {
 }
 
 async function loadData() {
-    let gj = null;
+    let gj = { type: 'FeatureCollection', features: [] };
 
-    // ToDo Sebastian adapt this here to only allow db data source
-    if (USE_INLINE && INLINE_GEOJSON) {
-        gj = INLINE_GEOJSON;
-    } else if (DATA_ENDPOINT?.length) {
-        const r = await fetch(DATA_ENDPOINT, { cache: 'no-cache' });
-        gj = await r.json();
-    } else {
-        gj = { type: 'FeatureCollection', features: [] };
+
+    if (GEOJSON) {
+        gj = GEOJSON;
     }
 
     features = normalizeFeatures(gj);
 
     const src = map.getSource('eq');
-    // ToDo Sebastian this maybe does not need to be filtered in here since the filtering should be done in the db
-    const filtered = features; //.filter(featurePassesFilters);
+    const filtered = features.filter(featurePassesTimeFilter);
     const fc = { type: 'FeatureCollection', features: filtered };
-
     if (src) {
         src.setData(fc);
     } else {
@@ -233,21 +195,21 @@ async function loadData() {
             }
         });
 
-        // --- Click-to-open popup (single instance) ---
+        // --- Click-to-open popup ---
         const popup = new mapboxgl.Popup({
             closeButton: true,
-            closeOnClick: true   // clicking elsewhere on the map will close it
+            closeOnClick: true
         });
 
         function quakeHTML(p) {
             const dt = new Date(Number(p.time_ms || p.time || 0));
             return `
-        <div style="font:12px system-ui">
-          <b>${p.title || p.place || 'Earthquake'}</b><br/>
-          Mag: <b>${p.mag ?? '—'}</b> · Net: ${p.net || '—'} · Tsunami: ${p.tsunami || 0}<br/>
-          UTC: ${dt.toISOString().replace('T',' ').replace('Z',' Z')}<br/>
-          <a href="${p.url || '#'}" target="_blank" style="color:#8ab4f8">event page</a>
-        </div>`;
+                <div style="font:12px system-ui">
+                  <b>${p.title || p.place || 'Earthquake'}</b><br/>
+                  Mag: <b>${p.mag ?? '—'}</b> · Net: ${p.net || '—'} · Tsunami: ${p.tsunami || 0}<br/>
+                  UTC: ${dt.toISOString().replace('T',' ').replace('Z',' Z')}<br/>
+                  <a href="${p.url || '#'}" target="_blank" style="color:#8ab4f8">event page</a>
+                </div>`;
         }
 
         // Cursor feedback
@@ -264,25 +226,15 @@ async function loadData() {
             if (!f) return;
 
             const p = f.properties || {};
-            const coords = (f.geometry && f.geometry.coordinates) || null;
+            const coords = (f?.geometry?.coordinates) || null;
             if (!coords || coords[0] == null || coords[1] == null) return;
 
             const lngLat = [Number(coords[0]), Number(coords[1])];
             popup.setLngLat(lngLat).setHTML(quakeHTML(p)).addTo(map);
 
-            // Prevent the subsequent map 'click' from immediately closing it (safety on some browsers)
+            // Prevent the subsequent map 'click' from immediately closing it
             if (e.originalEvent) {
                 e.originalEvent.cancelBubble = true;
-            }
-        });
-
-        // (Optional explicit close on map click — closeOnClick already handles this,
-        // but keeping it ensures consistent behavior across browsers)
-        map.on('click', (e) => {
-            // If the click wasn't on the circle layer, close the popup.
-            const feats = map.queryRenderedFeatures(e.point, { layers: ['eq-circles'] });
-            if (!feats || feats.length === 0) {
-                popup.remove();
             }
         });
     }
@@ -294,20 +246,41 @@ async function loadData() {
 function updateSourceData() {
     const src = map.getSource('eq');
     if (!src) return;
-    const filtered = features.filter(featurePassesFilters);
+    const filtered = features.filter(featurePassesTimeFilter);
     src.setData({ type: 'FeatureCollection', features: filtered });
     updateTable(filtered);
 }
 
 function setFadingByAge() {
-    const fade = ['interpolate', ['linear'],
+    const ageFade = ['interpolate', ['linear'],
         ['-', ['literal', tNow], ['get', 'time_ms']],
-        0, 1.0,
-        6 * MS_PER_HOUR, 0.4,
-        24 * MS_PER_HOUR, 0.12
+        0,                1.0,   // now
+        6 * MS_PER_HOUR,  0.4,
+        24 * MS_PER_HOUR, 0.1,
+        72 * MS_PER_HOUR, 0.0
     ];
+
+    // Base weight by magnitude (same as your layer definition)
+    const magWeight = ['interpolate', ['linear'], ['coalesce', ['get', 'mag'], 0],
+        0, 0.1,
+        2, 0.3,
+        4, 0.7,
+        6, 1.0
+    ];
+
+    if (map.getLayer('eq-heat')) {
+        map.setPaintProperty('eq-heat', 'heatmap-weight', ['*', magWeight, ageFade]);
+        map.setPaintProperty('eq-heat', 'heatmap-intensity', 1.0);
+    }
+
     if (map.getLayer('eq-circles')) {
-        map.setPaintProperty('eq-circles', 'circle-opacity', fade);
+        map.setPaintProperty('eq-circles', 'circle-opacity', ['interpolate', ['linear'],
+            ['-', ['literal', tNow], ['get', 'time_ms']],
+            0,                0.9,
+            6 * MS_PER_HOUR,  0.4,
+            24 * MS_PER_HOUR, 0.1,
+            72 * MS_PER_HOUR, 0.0
+        ]);
     }
 }
 
@@ -322,10 +295,6 @@ async function init() {
     setLayerVisibility();
     setFadingByAge();
     animate();
-
-    if (!USE_INLINE && DATA_ENDPOINT && DATA_ENDPOINT.length) {
-        setInterval(async () => { await loadData(); }, 60 * 1000);
-    }
 }
 
 function animate() {
@@ -358,6 +327,7 @@ function animate() {
     if (legend) legend.textContent = `Layer: ${LAYER_MODE} · Style: ${MAP_STYLE_NAME}`;
 }
 
+// start script
 init().catch(err => {
     console.error(err);
     document.body.innerHTML = '<pre style="color:#fff;padding:16px">' + String(err) + '</pre>';
