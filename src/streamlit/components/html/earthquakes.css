@@ -1,5 +1,10 @@
 :root {
     --hud-bg: rgba(0, 0, 0, 0.6);
+    --track: #243041;
+    --track-hover: #2b3a4f;
+    --thumb: #e5e7eb;
+    --thumb-border: #1f2937;
+    --accent: #1f6feb;
 }
 
 html, body {
@@ -47,11 +52,17 @@ html, body {
 .hud {
     top: 8px;
     left: 8px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-width: 40%;
 }
 
 .legend {
     top: 8px;
     right: 50px;
+    max-width: 40%;
 }
 
 button {
@@ -107,4 +118,110 @@ tbody tr:hover {
 .link {
     color: #8ab4f8;
     text-decoration: none;
+}
+
+
+/* --- Timeline slider additions --- */
+#clock {
+    margin-left: 2px;
+}
+
+#timeline-wrap {
+    flex-basis: 100%;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr; /* start | arrow | end */
+    grid-template-rows: auto auto;       /* row 1: slider, row 2: labels */
+    align-items: center;
+    gap: 6px 8px;
+}
+
+/* Slider spans the full width on the first row */
+#timeline {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    width: 100%;
+}
+
+/* Labels sit on the second row */
+#t-start {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+}
+
+#timeline-wrap > span:nth-child(3) { /* the "->" arrow */
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: center;
+    opacity: 0.8;
+}
+
+#t-end {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+}
+
+#t-start, #t-end {
+    color: #cbd5e1;
+    font-size: 11px;
+}
+
+/* Track */
+#timeline::-webkit-slider-runnable-track {
+    height: 4px;
+    background: linear-gradient(90deg, var(--track), var(--track));
+    border-radius: 999px;
+}
+#timeline::-moz-range-track {
+    height: 4px;
+    background: var(--track);
+    border-radius: 999px;
+}
+
+/* Thumb */
+#timeline::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px; /* centers on 4px track */
+    border-radius: 50%;
+    background: var(--thumb);
+    border: 2px solid var(--thumb-border);
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.15);
+}
+#timeline::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--thumb);
+    border: 2px solid var(--thumb-border);
+}
+
+/* Hover/focus states */
+#timeline:hover::-webkit-slider-runnable-track { background: var(--track-hover); }
+#timeline:hover::-moz-range-track { background: var(--track-hover); }
+
+#timeline:focus {
+    outline: none;
+}
+#timeline:focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--accent) 70%, white);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+@media (max-width: 720px) {
+    #timeline-wrap {
+        min-width: 0;
+        max-width: 80vw;
+        gap: 4px 6px;
+    }
+    #timeline {
+        width: 48vw;
+    }
+    .legend {
+        right: 8px;
+    }
 }

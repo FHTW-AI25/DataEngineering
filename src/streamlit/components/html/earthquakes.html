@@ -13,11 +13,17 @@
                 <div class="hud">
                     <button id="play">Play</button><button id="pause">Pause</button>
                     <span id="clock"></span>
+                    <br/>
+                    <div id="timeline-wrap" title="Scrub timeline">
+                        <input id="timeline" type="range" min="0" max="100" step="3600000" />
+                        <span id="t-start" class="mono"></span>
+                        <span>-></span>
+                        <span id="t-end" class="mono"></span>
+                    </div>
                 </div>
                 <div class="legend">
                     <div id="legend-content">Layer: __LAYER_MODE__ · Style: __MAP_STYLE_NAME__</div>
                     <div>Filters: mag [__MAG_MIN__, __MAG_MAX__], depth [__DEPTH_MIN__, __DEPTH_MAX__] km, tsunami-only: __TSUNAMI_ONLY__</div>
-                    <div>Window: __START_ISO__ -> __END_ISO__</div>
                 </div>
             </div>
 

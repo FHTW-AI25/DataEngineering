@@ -40,12 +40,10 @@ let features = [];
 let tNow = START_MS;
 let playing = false;
 
-function withinBBox(coord, bbox) {
-    if (!bbox) return true;
-    const [minLon, minLat, maxLon, maxLat] = bbox;
-    const [lon, lat] = coord;
-    return lon >= minLon && lon <= maxLon && lat >= minLat && lat <= maxLat;
-}
+// Slider globals
+let sliderEl, startLabelEl, endLabelEl, clock;
+// true while pointer is down on the slider
+let userScrubbing = false;
 
 function featurePassesTimeFilter(f) {
     const p = f.properties || {};
@@ -105,7 +103,7 @@ function updateTable(filtered) {
 }
 
 function normalizeFeatures(gj) {
-    const feats = (gj && gj.features) || [];
+    const feats = gj?.features || [];
     return feats.map(f => {
         const props = Object.assign({}, f.properties);
         if (props.time_ms == null) {
@@ -113,7 +111,7 @@ function normalizeFeatures(gj) {
                 props.time_ms = Number(props.time);
             } else if (props.time_utc) {
                 const t = Date.parse(props.time_utc);
-                props.time_ms = isFinite(t) ? t : 0;
+                props.time_ms = Number.isFinite(t) ? t : 0;
             } else {
                 props.time_ms = 0;
             }
@@ -124,7 +122,6 @@ function normalizeFeatures(gj) {
 
 async function loadData() {
     let gj = { type: 'FeatureCollection', features: [] };
-
 
     if (GEOJSON) {
         gj = GEOJSON;
@@ -164,7 +161,7 @@ async function loadData() {
                 ],
                 'circle-stroke-color': 'rgba(0,0,0,0.5)',
                 'circle-stroke-width': 1,
-                'circle-opacity': 1.0
+                'circle-opacity': 1
             }
         });
 
@@ -181,9 +178,9 @@ async function loadData() {
                     0, 0.1,
                     2, 0.3,
                     4, 0.7,
-                    6, 1.0
+                    6, 1
                 ],
-                'heatmap-intensity': 1.0,
+                'heatmap-intensity': 1,
                 'heatmap-radius': [
                     'interpolate', ['linear'], ['zoom'],
                     0, 2,
@@ -222,7 +219,7 @@ async function loadData() {
 
         // Open on click (anchored at feature's center)
         map.on('click', 'eq-circles', (e) => {
-            const f = e.features && e.features[0];
+            const f = e?.features[0];
             if (!f) return;
 
             const p = f.properties || {};
@@ -254,10 +251,10 @@ function updateSourceData() {
 function setFadingByAge() {
     const ageFade = ['interpolate', ['linear'],
         ['-', ['literal', tNow], ['get', 'time_ms']],
-        0,                1.0,   // now
+        0,                1,   // now
         6 * MS_PER_HOUR,  0.4,
         24 * MS_PER_HOUR, 0.1,
-        72 * MS_PER_HOUR, 0.0
+        72 * MS_PER_HOUR, 0
     ];
 
     // Base weight by magnitude (same as your layer definition)
@@ -265,12 +262,12 @@ function setFadingByAge() {
         0, 0.1,
         2, 0.3,
         4, 0.7,
-        6, 1.0
+        6, 1
     ];
 
     if (map.getLayer('eq-heat')) {
         map.setPaintProperty('eq-heat', 'heatmap-weight', ['*', magWeight, ageFade]);
-        map.setPaintProperty('eq-heat', 'heatmap-intensity', 1.0);
+        map.setPaintProperty('eq-heat', 'heatmap-intensity', 1);
     }
 
     if (map.getLayer('eq-circles')) {
@@ -279,7 +276,7 @@ function setFadingByAge() {
             0,                0.9,
             6 * MS_PER_HOUR,  0.4,
             24 * MS_PER_HOUR, 0.1,
-            72 * MS_PER_HOUR, 0.0
+            72 * MS_PER_HOUR, 0
         ]);
     }
 }
@@ -289,11 +286,63 @@ function setLayerVisibility() {
     if (map.getLayer('eq-heat')) map.setLayoutProperty('eq-heat', 'visibility', LAYER_MODE === 'heatmap' ? 'visible' : 'none');
 }
 
+function setSliderBounds() {
+    if (!sliderEl) return;
+    sliderEl.min = String(START_MS);
+    sliderEl.max = String(END_MS);
+    sliderEl.step = String(MS_PER_HOUR); // 1 hour steps
+}
+
+function updateSliderFromTime() {
+    if (!sliderEl || userScrubbing) return;
+    sliderEl.value = String(tNow);
+}
+
+function setTimeFromSlider(valMs) {
+    const v = Math.max(START_MS, Math.min(END_MS, Number(valMs)));
+    tNow = v;
+    setFadingByAge();
+    updateSourceData();
+    clock.textContent = new Date(tNow).toISOString().replace('T',' ').replace('Z',' Z');
+}
+
+function initSliderUI() {
+    sliderEl = document.getElementById('timeline');
+    startLabelEl = document.getElementById('t-start');
+    endLabelEl = document.getElementById('t-end');
+    clock = document.getElementById('clock');
+
+    setSliderBounds();
+    clock.textContent = new Date(START_MS).toISOString().replace('T',' ').replace('Z',' Z');
+    sliderEl.value = String(START_MS);
+    if (startLabelEl) startLabelEl.textContent = new Date(START_MS).toISOString().slice(0,19).replace('T',' ') + ' Z';
+    if (endLabelEl) endLabelEl.textContent   = new Date(END_MS).toISOString().slice(0,19).replace('T',' ') + ' Z';
+
+    // Pause while scrubbing, resume only if it was playing
+    let wasPlaying = false;
+    sliderEl.addEventListener('pointerdown', () => {
+        userScrubbing = true;
+        wasPlaying = playing;
+        playing = false;
+    });
+    sliderEl.addEventListener('pointerup', () => {
+        userScrubbing = false;
+        // snap to nearest step and update
+        const snapped = Math.round(Number(sliderEl.value) / MS_PER_HOUR) * MS_PER_HOUR;
+        setTimeFromSlider(snapped);
+        if (wasPlaying) playing = true;
+    });
+
+    // update from slider dragging
+    sliderEl.addEventListener('input', () => setTimeFromSlider(sliderEl.value));
+}
+
 async function init() {
     await new Promise(res => map.on('load', res));
     await loadData();
     setLayerVisibility();
     setFadingByAge();
+    initSliderUI();
     animate();
 }
 
@@ -314,6 +363,7 @@ function animate() {
             if (clock) {
                 clock.textContent = new Date(tNow).toISOString().replace('T', ' ').replace('Z', ' Z');
             }
+            updateSliderFromTime();
         }
         requestAnimationFrame(frame);
     }

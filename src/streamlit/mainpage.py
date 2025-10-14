@@ -34,7 +34,7 @@ render_map(cfg, gj)
 st.subheader("Event Data Table")
 render_table(gj)
 
-# --- Distribution ---
+# --- Distribution Components ---
 st.subheader("Distributions")
 render_mag_hist(gj)
 render_depth_hist(gj)
