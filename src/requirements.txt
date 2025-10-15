@@ -4,3 +4,6 @@ sqlalchemy
 geoalchemy2
 # psycopg-binary
 psycopg2-binary
+pandas
+geopandas
+shapely
