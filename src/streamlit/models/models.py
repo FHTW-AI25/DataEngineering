@@ -45,3 +45,13 @@ class Earthquake(SQLModel, table=True):
         default=None,
         sa_column=Column(Geometry(geometry_type="POINT", srid=4326))
     )
+
+class Country(SQLModel, table=True):
+    __tablename__ = "country"
+    iso: str = Field(primary_key=True, max_length=3)
+    name: str = Field(index=True, max_length=255)
+
+class Sea(SQLModel, table=True):
+    __tablename__ = "sea"
+    id: int = Field(primary_key=True)      # 0..9
+    name: str = Field(index=True, max_length=255, unique=True)

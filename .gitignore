@@ -2,3 +2,4 @@
 /src/db/.env
 /.idea/
 /src/streamlit/.streamlit/
+__pycache__

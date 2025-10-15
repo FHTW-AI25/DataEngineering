@@ -1,5 +1,5 @@
-from data_loader import DataLoader
-from location_resolver import LocationResolver
+from location.data_loader import DataLoader
+from location.location_resolver import LocationResolver
 
 test_points = [
     (42.5, -87.0, "Lake Michigan, USA — Wasser"),

@@ -1,68 +1,72 @@
+# src/data_loader.py
 from __future__ import annotations
 from pathlib import Path
 import glob
 import geopandas as gpd
 import pandas as pd
+import fiona
 
 class DataLoader:
-    """
-    Loads EEZ + GOaS data for the app.
+    def __init__(self) -> None:
+        # project_root = parent of "src/" (because this file lives in src/)
+        self.project_root = Path(__file__).resolve().parents[1]
+        self.data_dir = (self.project_root / "data").resolve()
+        self.eez_dir = self.data_dir / "EEZ_land_union_v4_202410"
+        self.eez_path = self.eez_dir / "EEZ_land_union_v4_202410.shp"
+        self.goas_split_dir = self.data_dir / "GOaS_v1_20211214_gpkg" / "split"
 
-    - GOaS: assumes you only have split files on disk (one GPKG per ocean),
-      each written with a saved '__row_id__' column and a layer named 'ocean'.
-      Merges them back into one GeoDataFrame and restores original row order/index.
+    def _require_exists(self, path: Path, hint: str = "") -> None:
+        if not path.exists():
+            raise FileNotFoundError(f"Missing path: {path}\n{hint}")
 
-    - EEZ: loads the shapefile directly.
-    """
-
-    # --- default locations (adjust if your structure differs) ---
-    EEZ_PATH = Path("../../../data/EEZ_land_union_v4_202410/EEZ_land_union_v4_202410.shp")
-    GOAS_SPLIT_DIR = Path("../../../data/GOaS_v1_20211214_gpkg/split")
-    GOAS_LAYER = "ocean"   # layer name used when writing split files
+    def _require_shapefile_set(self, shp: Path) -> None:
+        required = [shp.with_suffix(ext) for ext in (".shp", ".shx", ".dbf")]
+        missing = [p for p in required if not p.exists()]
+        if missing:
+            raise FileNotFoundError(
+                "Shapefile sidecar(s) missing:\n  " + "\n  ".join(map(str, missing)) +
+                f"\nMake sure the whole shapefile set is under: {shp.parent}"
+            )
 
     def load_eez_land_union(self) -> gpd.GeoDataFrame:
-        gdf = gpd.read_file(self.EEZ_PATH)
-        if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
+        # sanity checks with helpful hints
+        self._require_exists(self.data_dir, "Expected a top-level 'data/' directory.")
+        self._require_exists(self.eez_dir, "Put EEZ files under 'data/EEZ_land_union_v4_202410/'.")
+        self._require_exists(self.eez_path, "Expected 'EEZ_land_union_v4_202410.shp' in 'data/eez/'.")
+        self._require_shapefile_set(self.eez_path)
+
+        gdf = gpd.read_file(str(self.eez_path))
+        if gdf.crs and gdf.crs.to_epsg() != 4326:
             gdf = gdf.to_crs(4326)
-        return gdf  # keep full schema as-is
+        return gdf
+
+    def _read_single_layer(self, fp: str) -> gpd.GeoDataFrame:
+        layers = fiona.listlayers(fp)
+        layer = "ocean" if "ocean" in layers else (layers[0] if layers else None)
+        if layer is None:
+            raise ValueError(f"No layers found in {fp}")
+        return gpd.read_file(fp, layer=layer)
 
     def load_goas(self) -> gpd.GeoDataFrame:
-        # Merge all split GPKGs back into one GeoDataFrame
-        pattern = str(self.GOAS_SPLIT_DIR / "*.gpkg")
-        files = sorted(glob.glob(pattern))
+        self._require_exists(self.goas_split_dir, "Expected GOaS split files under 'data/GOaS_v1_20211214_gpkg/split/'.")
+        files = sorted(glob.glob(str(self.goas_split_dir / "*.gpkg")))
         if not files:
-            raise FileNotFoundError(
-                f"No split GOaS files found under: {self.GOAS_SPLIT_DIR} (pattern {pattern})"
-            )
+            raise FileNotFoundError(f"No '*.gpkg' files found in {self.goas_split_dir}")
 
-        frames = []
-        for fp in files:
-            try:
-                # preferred: read the explicit layer we wrote
-                frames.append(gpd.read_file(fp, layer=self.GOAS_LAYER))
-            except Exception:
-                # fallback: read default layer if 'ocean' wasn't used
-                frames.append(gpd.read_file(fp))
-
+        frames = [self._read_single_layer(fp) for fp in files]
         merged = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), crs=frames[0].crs)
 
-        # CRS -> WGS84 (lon/lat), just in case parts differ
-        if merged.crs is not None and merged.crs.to_epsg() != 4326:
+        if merged.crs and merged.crs.to_epsg() != 4326:
             merged = merged.to_crs(4326)
 
-        # Restore original row order/index using the saved ID
         if "__row_id__" not in merged.columns:
             raise KeyError(
-                "Missing '__row_id__' in merged GOaS data. "
-                "Make sure you added it before splitting (gdf['__row_id__']=gdf.index)."
+                "Missing '__row_id__' in GOaS split files. "
+                "Add it before splitting (gdf['__row_id__']=gdf.index)."
             )
 
-        merged = merged.sort_values("__row_id__").reset_index(drop=True)
-        merged = merged.set_index("__row_id__", drop=True)
-
+        merged = merged.sort_values("__row_id__").reset_index(drop=True).set_index("__row_id__", drop=True)
         return merged
 
-    # Optional convenience
-    def load_all(self) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
-        """Returns (eez_land_union, goas)."""
+    def load_all(self):
         return self.load_eez_land_union(), self.load_goas()
