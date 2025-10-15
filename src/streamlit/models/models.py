@@ -7,13 +7,13 @@ from geoalchemy2 import Geometry
 
 class Earthquake(SQLModel, table=True):
     """
-    ORM for: usgs_quakes
+    ORM for: quake
     """
-    __tablename__ = "usgs_quakes"
+    __tablename__ = "quake"
 
     __table_args__ = (
-        Index("usgs_quakes_time_idx", "time_utc"),
-        Index("usgs_quakes_mag_idx", "mag"),
+        Index("quake_time_idx", "time_utc"),
+        Index("quake_mag_idx", "mag"),
         {"extend_existing": True},
     )
 
@@ -59,7 +59,7 @@ class Sea(SQLModel, table=True):
 class Location(SQLModel, table=True):
     __tablename__ = "location"
 
-    # quake_id is both PK and FK to usgs_quakes.id
+    # quake_id is both PK and FK to quake.id
     quake_id: int = Field(primary_key=True)
 
     # nullable – either could be None if resolver can’t determine it

@@ -4,7 +4,7 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 -- Take a look at: https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php
 
 -- Core table for USGS quakes
-CREATE TABLE IF NOT EXISTS usgs_quakes (
+CREATE TABLE IF NOT EXISTS quake (
     id            bigserial PRIMARY KEY,
     -- earthquake id, maybe save as well
     usgs_id       text,
@@ -36,17 +36,17 @@ CREATE TABLE IF NOT EXISTS usgs_quakes (
     );
 
 -- some useful indexes
-CREATE INDEX IF NOT EXISTS usgs_quakes_time_idx ON usgs_quakes (time_utc DESC);
-CREATE INDEX IF NOT EXISTS usgs_quakes_mag_idx  ON usgs_quakes (mag);
-CREATE INDEX IF NOT EXISTS usgs_quakes_geom_gix ON usgs_quakes USING GIST (geom);
+CREATE INDEX IF NOT EXISTS quake_time_idx ON quake (time_utc DESC);
+CREATE INDEX IF NOT EXISTS quake_mag_idx  ON quake (mag);
+CREATE INDEX IF NOT EXISTS quake_geom_gix ON quake USING GIST (geom);
 
 
 -- ──────────────────────────────────────────────────────────────────────────────
--- Dummy seed data for usgs_quakes (UTC timestamps, diverse locations/mags)
+-- Dummy seed data for quake (UTC timestamps, diverse locations/mags)
 -- Paste below your CREATE TABLE / INDEX statements in init.sql
 -- ──────────────────────────────────────────────────────────────────────────────
 
-INSERT INTO usgs_quakes (
+INSERT INTO quake (
     usgs_id, mag, place, time_utc, updated_utc, url, detail_url,
     tsunami, sig, mag_type, typ, title, net, code,
     depth_km, lon, lat, geom

@@ -12,7 +12,7 @@ from data.db import get_engine, get_session
 class LocationManager:
     """
     Creates the location table and fills it by resolving (lat, lon) for earthquakes.
-    - quake_id      -> usgs_quakes.id
+    - quake_id      -> quake.id
     - country_iso   -> ISO3 or None
     - sea_id        -> FK to sea.id or None
     """
@@ -77,7 +77,7 @@ class LocationManager:
         with get_session() as session:
             rows = session.exec(text("""
                 SELECT id, lat, lon
-                FROM usgs_quakes
+                FROM quake
                 WHERE lat IS NOT NULL AND lon IS NOT NULL
             """)).fetchall()
         # Create a tiny shim object with attributes id/lat/lon
