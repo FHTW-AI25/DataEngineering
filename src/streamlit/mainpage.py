@@ -2,6 +2,7 @@ import streamlit as st
 
 from location.country_sea_manager import CountrySeaManager
 from location.data_loader import DataLoader
+from location.location_manager import LocationManager
 from utils.utils import fetch_geojson_for_cfg
 from components.sidebar import render_sidebar_return_config
 from components.map_view import render_map
@@ -24,9 +25,16 @@ try:
     # Fetch data ONCE (DB via ORM if available; else HTTP)`
     # --------------------------------------------------------------------
     gj = fetch_geojson_for_cfg(cfg)
-    location_data_loader = DataLoader()
-    country_sea_manager = CountrySeaManager(location_data_loader)
+
+    data_loader = DataLoader()
+    country_sea_manager = CountrySeaManager(data_loader)
     country_sea_manager.ensure_and_fill_all()
+
+    location_manager = LocationManager()
+    location_manager.create_table()
+    count = location_manager.upsert_locations_for_all_quakes()
+    print(f"Upserted {count} location rows.")
+
 except Exception as e:
     st.error(f"Failed to load data: {e}")
     st.stop()

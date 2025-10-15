@@ -55,3 +55,13 @@ class Sea(SQLModel, table=True):
     __tablename__ = "sea"
     id: int = Field(primary_key=True)      # 0..9
     name: str = Field(index=True, max_length=255, unique=True)
+
+class Location(SQLModel, table=True):
+    __tablename__ = "location"
+
+    # quake_id is both PK and FK to usgs_quakes.id
+    quake_id: int = Field(primary_key=True)
+
+    # nullable – either could be None if resolver can’t determine it
+    country_iso: Optional[str] = Field(default=None, max_length=3)
+    sea_id: Optional[int] = Field(default=None)
