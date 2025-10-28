@@ -7,35 +7,27 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS quake (
-    id            BIGSERIAL PRIMARY KEY,
-    -- original USGS (or other feed) ID
-    usgs_id       TEXT,
-
-    -- core event attributes
-    mag           NUMERIC,
-    place         TEXT,
-    time_utc      TIMESTAMPTZ,
-    updated_utc   TIMESTAMPTZ,
-    url           TEXT,
-    detail_url    TEXT,
-
-    tsunami       SMALLINT,     -- 0 or 1
-    sig           INTEGER,      -- "significance" score
-    mag_type      TEXT,
-    typ           TEXT,
-    title         TEXT,
-    net           TEXT,
-    code          TEXT,
-
-    depth_km      NUMERIC,
-    lon           DOUBLE PRECISION,
-    lat           DOUBLE PRECISION,
-
-    -- PostGIS geometry point in EPSG:4326 (lon/lat)
+    id            bigserial PRIMARY KEY,
+    usgs_id       text UNIQUE,
+    mag           numeric,
+    place         text,
+    time_utc      timestamptz,
+    updated_utc   timestamptz,
+    url           text,
+    detail_url    text,
+    tsunami       smallint,
+    sig           integer,
+    mag_type      text,
+    typ           text,
+    title         text,
+    net           text,
+    code          text,
+    depth_km      numeric,
+    lon           double precision,
+    lat           double precision,
     geom          geometry(Point, 4326)
 );
 
--- Helpful indexes for queries / filters
 CREATE INDEX IF NOT EXISTS quake_time_idx ON quake (time_utc DESC);
 CREATE INDEX IF NOT EXISTS quake_mag_idx  ON quake (mag);
 CREATE INDEX IF NOT EXISTS quake_geom_gix ON quake USING GIST (geom);
@@ -104,3 +96,17 @@ ALTER TABLE location
 -- Helpful index for joining/filtering by country or sea
 CREATE INDEX IF NOT EXISTS location_country_idx ON location (country_iso);
 CREATE INDEX IF NOT EXISTS location_sea_idx     ON location (sea_id);
+
+-- Tracks what data ranges have been loaded
+CREATE TABLE IF NOT EXISTS data_load_log (
+    id SERIAL PRIMARY KEY,
+    start_time_utc TIMESTAMPTZ NOT NULL,
+    end_time_utc   TIMESTAMPTZ NOT NULL,
+    rows_inserted  INTEGER,
+    status         TEXT DEFAULT 'success',  -- success, partial, error
+    created_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Simple index to check latest coverage
+CREATE INDEX IF NOT EXISTS data_load_log_start_idx ON data_load_log(start_time_utc);
+CREATE INDEX IF NOT EXISTS data_load_log_end_idx   ON data_load_log(end_time_utc);
