@@ -1,5 +1,5 @@
 /src/db/volume/
-/src/db/.env
+/.env
 /.idea/
 /src/streamlit/.streamlit/
 __pycache__

@@ -1,9 +1,14 @@
 from dataclasses import dataclass
 from datetime import datetime, date, time as dtime, timezone
 import streamlit as st
+import os
+from dotenv import load_dotenv
 
 from data.data_sources import DATA_SOURCES
 from utils.types import AppConfig
+
+# Load .env variables (only once)
+load_dotenv()
 
 
 def render_sidebar_return_config() -> AppConfig:
@@ -22,10 +27,11 @@ def render_sidebar_return_config() -> AppConfig:
     # JS expects hours/second -> treat 1x..10x as 1..10 hours/second
     speed_hps = float(speed_multiplier)
 
-    ds_choice = st.sidebar.selectbox("Data source", DATA_SOURCES, format_func=lambda d: d.name())
+    ds_choice = st.sidebar.selectbox(
+        "Data source", DATA_SOURCES, format_func=lambda d: d.name()
+    )
 
-    # Get mapbox token from secret file
-    MAPBOX_TOKEN = st.secrets.get("MAPBOX_TOKEN", "")
+    MAPBOX_TOKEN = os.getenv("MAPBOX_TOKEN", "")
 
     style_options = {
         "Dark": "mapbox://styles/mapbox/dark-v11",
