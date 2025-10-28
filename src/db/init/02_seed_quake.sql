@@ -1,51 +1,12 @@
--- Enable PostGIS
+-- ============================================================================
+-- SEED DATA FOR quake TABLE
+-- (Sample events for testing visualization and queries)
+-- ============================================================================
+
+-- Make sure PostGIS extension exists
 CREATE EXTENSION IF NOT EXISTS postgis;
 
--- Take a look at: https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php
-
--- Core table for USGS quakes
-CREATE TABLE IF NOT EXISTS quake (
-    id            bigserial PRIMARY KEY,
-    -- earthquake id, maybe save as well
-    usgs_id       text,
-    -- starting feature properties
-    mag           numeric,
-    place         text,
-    time_utc      timestamptz,
-    updated_utc   timestamptz,
-    url           text,
-    detail_url    text,
-    -- 0 - 1
-    tsunami       smallint,
-    -- significants level [0 - 1000]
-    sig           integer,
-    -- maybe not needed
-    mag_type      text,
-    -- type maybe also not needed
-    typ           text,
-    title         text,
-    -- also not needed
-    net           text,
-    -- also not needed
-    code          text,
-    -- typically [0 - 1000]
-    depth_km      numeric,
-    lon           double precision,
-    lat           double precision,
-    geom          geometry(Point, 4326)
-    );
-
--- some useful indexes
-CREATE INDEX IF NOT EXISTS quake_time_idx ON quake (time_utc DESC);
-CREATE INDEX IF NOT EXISTS quake_mag_idx  ON quake (mag);
-CREATE INDEX IF NOT EXISTS quake_geom_gix ON quake USING GIST (geom);
-
-
--- ──────────────────────────────────────────────────────────────────────────────
--- Dummy seed data for quake (UTC timestamps, diverse locations/mags)
--- Paste below your CREATE TABLE / INDEX statements in init.sql
--- ──────────────────────────────────────────────────────────────────────────────
-
+-- Insert some representative quake data
 INSERT INTO quake (
     usgs_id, mag, place, time_utc, updated_utc, url, detail_url,
     tsunami, sig, mag_type, typ, title, net, code,

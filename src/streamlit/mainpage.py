@@ -28,10 +28,9 @@ try:
 
     data_loader = DataLoader()
     country_sea_manager = CountrySeaManager(data_loader)
-    country_sea_manager.ensure_and_fill_all()
+    country_sea_manager.fill_all()
 
     location_manager = LocationManager()
-    location_manager.create_table()
     count = location_manager.upsert_locations_for_all_quakes()
     print(f"Upserted {count} location rows.")
 

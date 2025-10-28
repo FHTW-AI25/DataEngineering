@@ -1,20 +1,25 @@
-# src/services/location_manager.py
 from __future__ import annotations
-from typing import Iterable, Sequence
-import pandas as pd
+from typing import Iterable
+import pandas as pd  # (not strictly used right now, so you *can* drop this import)
 from sqlalchemy import text
-from sqlmodel import SQLModel
+
 from location.data_loader import DataLoader
-from location.location_resolver import LocationResolver, Location
-from models.models import Country, Sea, Location
-from data.db import get_engine, get_session
+from location.location_resolver import LocationResolver
+from data.db import get_session
+
 
 class LocationManager:
     """
-    Creates the location table and fills it by resolving (lat, lon) for earthquakes.
-    - quake_id      -> quake.id
-    - country_iso   -> ISO3 or None
-    - sea_id        -> FK to sea.id or None
+    Populates the 'location' table by resolving (lat, lon) for earthquakes.
+
+    location schema:
+      quake_id    -> quake.id (PK, 1:1)
+      country_iso -> country.iso (nullable)
+      sea_id      -> sea.id (nullable)
+
+    Assumes:
+    - 'quake', 'country', 'sea', and 'location' tables already exist.
+    - PostGIS + schema were created by init SQL (01_schema.sql).
     """
 
     def __init__(self, resolver: LocationResolver | None = None):
@@ -25,34 +30,32 @@ class LocationManager:
             resolver = LocationResolver(eez, goas)
         self.resolver = resolver
 
-    # --- schema ---
-    def create_table(self) -> None:
-        engine = get_engine()
-        # Make sure the models are imported so metadata knows all tables
-        SQLModel.metadata.create_all(engine)
-
-    # --- ingestion ---
-    def upsert_locations_for_quakes(self, quakes: Iterable["Earthquake"]) -> int:
+    def upsert_locations_for_quakes(self, quakes: Iterable[object]) -> int:
         """
-        Resolve country & sea for each earthquake and upsert into 'location'.
-        Skips quakes without lat/lon.
+        For each quake object with {id, lat, lon}, figure out:
+          - which country it's in (if any)
+          - which sea it's in (if offshore)
+        and upsert into the 'location' table.
+
+        Skips quakes missing lat/lon.
         Returns number of rows upserted.
         """
-
         records = []
         for q in quakes:
             if q.lat is None or q.lon is None:
                 continue
-            loc = self.resolver.resolve(q.lat, q.lon)
+
+            resolved = self.resolver.resolve(q.lat, q.lon)
 
             sea_id = None
-            if loc and loc.sea:
-                sea_id = int(loc.sea)
+            if resolved and resolved.sea is not None:
+                # resolved.sea is expected to be an integer-like ID into `sea.id`
+                sea_id = int(resolved.sea)
 
             records.append({
                 "quake_id": int(q.id),
-                "country_iso": (loc.country if loc else None),
-                "sea_id": sea_id
+                "country_iso": (resolved.country if resolved else None),
+                "sea_id": sea_id,
             })
 
         if not records:
@@ -65,26 +68,38 @@ class LocationManager:
                     VALUES (:quake_id, :country_iso, :sea_id)
                     ON CONFLICT (quake_id) DO UPDATE
                     SET country_iso = EXCLUDED.country_iso,
-                        sea_id = EXCLUDED.sea_id
+                        sea_id      = EXCLUDED.sea_id
                 """),
                 records,
             )
             session.commit()
+
         return len(records)
 
-    # convenience: pull quakes from DB directly
     def upsert_locations_for_all_quakes(self) -> int:
+        """
+        Convenience helper:
+        - pulls all quakes (id, lat, lon) from DB
+        - runs upsert_locations_for_quakes() on them
+        """
         with get_session() as session:
             rows = session.exec(text("""
                 SELECT id, lat, lon
                 FROM quake
-                WHERE lat IS NOT NULL AND lon IS NOT NULL
+                WHERE lat IS NOT NULL
+                  AND lon IS NOT NULL
             """)).fetchall()
-        # Create a tiny shim object with attributes id/lat/lon
-        class _Q: pass
+
+        # Build lightweight quake-like objects with attributes .id / .lat / .lon
+        class _Q:
+            __slots__ = ("id", "lat", "lon")
+
         quakes = []
-        for r in rows:
+        for (qid, qlat, qlon) in rows:
             q = _Q()
-            q.id, q.lat, q.lon = r[0], r[1], r[2]
+            q.id = qid
+            q.lat = qlat
+            q.lon = qlon
             quakes.append(q)
+
         return self.upsert_locations_for_quakes(quakes)
