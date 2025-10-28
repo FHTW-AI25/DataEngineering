@@ -1,4 +1,4 @@
-/src/db/volume/
+/db/volume/
 /.env
 /.idea/
 /src/streamlit/.streamlit/
