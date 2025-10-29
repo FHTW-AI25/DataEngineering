@@ -1,14 +1,19 @@
 from __future__ import annotations
+from dotenv import load_dotenv
+import os
 from sqlmodel import create_engine, Session
-import streamlit as st
 
+# Load environment variables from .env
+load_dotenv()
 
 def build_connection_string() -> str:
-    cfg = st.secrets["postgres"]
-    return (
-        f"postgresql+psycopg2://{cfg['user']}:{cfg['password']}"
-        f"@{cfg['host']}:{cfg['port']}/{cfg['dbname']}"
-    )
+    host = os.getenv("POSTGRES_HOST", "localhost")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    db = os.getenv("POSTGRES_DB", "db")
+    user = os.getenv("POSTGRES_USER", "admin")
+    password = os.getenv("POSTGRES_PASSWORD", "password")
+
+    return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
 
 _engine = None
 

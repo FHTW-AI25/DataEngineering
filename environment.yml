@@ -1,0 +1,13 @@
+name: data-engineering
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - geopandas=1.1.1
+  - pip
+  - pip:
+      - streamlit==1.50.0
+      - psycopg2-binary==2.9.11
+      - sqlmodel==0.0.27
+      - geoalchemy2==0.18.0
+      - python-dotenv==1.2.1
