@@ -110,3 +110,67 @@ CREATE TABLE IF NOT EXISTS data_load_log (
 -- Simple index to check latest coverage
 CREATE INDEX IF NOT EXISTS data_load_log_start_idx ON data_load_log(start_time_utc);
 CREATE INDEX IF NOT EXISTS data_load_log_end_idx   ON data_load_log(end_time_utc);
+
+-- Drop & recreate to ensure a clean schema (DESTRUCTIVE)
+DROP TABLE IF EXISTS data_catalog CASCADE;
+
+-- Tracks landed coverage per calendar month for the USGS extractor.
+-- One row per month_start (UTC, first day of month).
+CREATE TABLE data_catalog (
+  -- Partition key
+  month_start          date PRIMARY KEY,
+
+  -- Landing lifecycle
+  status               text NOT NULL
+                       CHECK (status IN ('landing','landed','error')),
+
+  -- Coverage window actually landed (UTC).
+  -- Must be within the same calendar month as month_start.
+  coverage_start_utc   timestamptz NOT NULL,
+  coverage_end_utc     timestamptz NOT NULL,
+  CHECK (coverage_start_utc <= coverage_end_utc),
+  CHECK (date_trunc('month', coverage_start_utc) = month_start::timestamp),
+  CHECK (date_trunc('month', coverage_end_utc)   = month_start::timestamp),
+
+  -- Whether month is fully complete (landed through last day 23:59:59 UTC)
+  finalized            boolean NOT NULL DEFAULT false,
+
+  -- Row count landed for this month (for observability)
+  rows                 integer NOT NULL DEFAULT 0
+                       CHECK (rows >= 0),
+
+  -- Telemetry
+  error                text,
+  updated_at           timestamptz NOT NULL DEFAULT now()
+);
+
+-- Helpful indexes
+-- Quick lookups for “work to do” and recent activity.
+CREATE INDEX data_catalog_status_idx    ON data_catalog (status);
+CREATE INDEX data_catalog_finalized_idx ON data_catalog (finalized);
+CREATE INDEX data_catalog_updated_idx   ON data_catalog (updated_at DESC);
+
+-- Optional: a simple view to see completeness at a glance
+CREATE OR REPLACE VIEW v_data_catalog_health AS
+SELECT
+  month_start,
+  status,
+  finalized,
+  rows,
+  coverage_start_utc,
+  coverage_end_utc,
+  (date_trunc('month', (coverage_end_utc + interval '1 second'))
+     = (month_start + interval '1 month')) AS covers_full_month,  -- true if end == last second of month
+  updated_at,
+  error
+FROM data_catalog;
+
+-- Optional: comments for psql \d+
+COMMENT ON TABLE data_catalog IS
+  'Landing catalog for monthly quake data (one row per month). Tracks status, coverage window, and completeness.';
+COMMENT ON COLUMN data_catalog.month_start IS 'UTC month key (first day of month).';
+COMMENT ON COLUMN data_catalog.status IS 'landing | landed | error';
+COMMENT ON COLUMN data_catalog.coverage_start_utc IS 'UTC start timestamp actually landed (must be within month_start month).';
+COMMENT ON COLUMN data_catalog.coverage_end_utc IS 'UTC end timestamp actually landed (must be within month_start month).';
+COMMENT ON COLUMN data_catalog.finalized IS 'True when month is fully landed to last second of the month.';
+COMMENT ON COLUMN data_catalog.rows IS 'Number of records landed for this month.';
