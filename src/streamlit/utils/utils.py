@@ -1,30 +1,32 @@
+# utils.py
+
 import json
 import pandas as pd
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Sequence
 from datetime import datetime, timezone
 
+from sqlmodel import select
+from sqlalchemy import and_, or_, func
+
+from earthquakes_common import get_session, Quake
 from utils.types import AppConfig
 
+
+# ---------------------
+# JS/templating helpers
+# ---------------------
 
 def js_bool(b: bool) -> str:
     return "true" if b else "false"
 
 def js_str(s: str) -> str:
     # robust JS string literal (uses Python's repr for basic escaping)
+    # (You can switch to json.dumps(s) if you prefer JSON escaping.)
     return repr(s)
 
 def fill_template_vars(template: str, cfg: AppConfig, geojson: dict | None) -> str:
     """
     Replace placeholders in a template string (JS or HTML).
-
-    Args:
-        template: the JS/HTML string with placeholders like __MAPBOX_TOKEN__
-        cfg: your config object with attributes (mapbox_token, style_url, etc.)
-        data_endpoint: string, the HTTP endpoint ("" if not used)
-        geojson: dict or None, FeatureCollection from ORM datasource
-
-    Returns:
-        str with placeholders replaced.
     """
     return (
         template
@@ -51,13 +53,18 @@ def fill_template_vars(template: str, cfg: AppConfig, geojson: dict | None) -> s
         .replace("__END_ISO__", cfg.end_dt.isoformat().replace("T", " ").replace("+00:00", " Z"))
     )
 
+
+# ---------------------
+# DataFrame conversion
+# ---------------------
+
 def features_to_dataframe(gj: Dict[str, Any]) -> pd.DataFrame:
     feats = (gj or {}).get("features", []) or []
     rows: List[Dict[str, Any]] = []
     for f in feats:
         p = f.get("properties", {}) or {}
         g = f.get("geometry", {}) or {}
-        # lat, lon, depth (depth not needed)
+        # lon, lat, depth
         coords = g.get("coordinates", [None, None, None]) or [None, None, None]
 
         time_ms = p.get("time_ms")
@@ -90,36 +97,141 @@ def features_to_dataframe(gj: Dict[str, Any]) -> pd.DataFrame:
     return df
 
 
-def to_iso(ts_ms: int) -> str:
+def to_iso(ts_ms: Optional[int]) -> str:
     if not ts_ms:
         return "—"
     # render as UTC
     return datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def fetch_geojson_for_cfg(cfg):
+# -------------------------------------
+# Embedded Postgres ORM data source
+# -------------------------------------
+
+class PostgresORMDataSource:
+    """ORM-backed PostgreSQL data source that returns GeoJSON."""
+    def name(self) -> str:
+        return "PostgreSQL"
+
+    def get_endpoint(self, **kwargs) -> str:
+        return ""  # Not used
+
+    def fetch_geojson(
+        self,
+        *,
+        start_ms: int,
+        end_ms: int,
+        mag_min: float,
+        mag_max: float,
+        depth_min: float,
+        depth_max: float,
+        tsunami_only: bool,
+        text_query: str,
+        networks: Sequence[str],
+        bbox: Optional[Sequence[float]],
+        limit: int = 5000,
+    ) -> Dict[str, Any]:
+        """Build SQL with expressions, run via session.exec, return FeatureCollection."""
+
+        # Convert ms -> datetime
+        start_dt = datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc)
+        end_dt   = datetime.fromtimestamp(end_ms   / 1000, tz=timezone.utc)
+
+        # Conditions
+        conds = [
+            Quake.time_utc.between(start_dt, end_dt),
+            Quake.mag.between(mag_min, mag_max),
+            Quake.depth_km.between(depth_min, depth_max),
+        ]
+
+        if tsunami_only:
+            conds.append(Quake.tsunami == 1)
+
+        tq = (text_query or "").strip().lower()
+        if tq:
+            like = f"%{tq}%"
+            conds.append(or_(
+                func.lower(Quake.place).ilike(like),
+                func.lower(Quake.title).ilike(like),
+            ))
+
+        nets = [n.strip().lower() for n in networks or [] if n.strip()]
+        if nets:
+            conds.append(func.lower(Quake.net).in_(nets))
+
+        # BBOX filter
+        if bbox:
+            min_lon, min_lat, max_lon, max_lat = bbox
+            conds.append(
+                func.ST_Intersects(
+                    Quake.geom,
+                    func.ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, 4326)
+                )
+            )
+
+        # Statement
+        stmt = (
+            select(Quake)
+            .where(and_(*conds))
+            .order_by(Quake.time_utc.desc())
+            .limit(limit)
+        )
+
+        # Fetch rows
+        with get_session() as session:
+            rows: List[Quake] = session.exec(stmt).all()
+
+        return {"type": "FeatureCollection", "features": [feat(r) for r in rows]}
+
+
+# --- Helper methods for GeoJSON feature building ---
+
+def to_epoch_ms(ts: Optional[datetime]) -> Optional[int]:
+    return int(ts.timestamp() * 1000) if ts else None
+
+def feat(entity: Quake) -> Dict[str, Any]:
+    coords = None
+    if entity.lon is not None and entity.lat is not None:
+        coords = [float(entity.lon), float(entity.lat)]
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": coords} if coords else None,
+        "properties": {
+            "time": to_epoch_ms(entity.time_utc) or 0,
+            "mag": float(entity.mag) if entity.mag is not None else None,
+            "place": entity.place,
+            "depth_km": float(entity.depth_km) if entity.depth_km is not None else None,
+            "lon": float(entity.lon) if entity.lon is not None else None,
+            "lat": float(entity.lat) if entity.lat is not None else None,
+            "tsunami": int(entity.tsunami) if entity.tsunami is not None else 0,
+            "net": entity.net,
+            "url": entity.url,
+            "title": entity.title,
+        },
+    }
+
+
+# -------------------------------------
+# Public function used by callers
+# -------------------------------------
+
+def fetch_geojson_for_cfg(cfg: AppConfig) -> Dict[str, Any]:
+    """
+    Fetch GeoJSON for the given config using the embedded Postgres ORM data source.
+    """
     start_ms = int(cfg.start_dt.timestamp() * 1000)
     end_ms   = int(cfg.end_dt.timestamp() * 1000)
 
-    # Prefer ORM/DB when the datasource provides it
-    if hasattr(cfg.ds_choice, "fetch_geojson"):
-        return cfg.ds_choice.fetch_geojson(
-            start_ms=start_ms,
-            end_ms=end_ms,
-            mag_min=cfg.mag_min,
-            mag_max=cfg.mag_max,
-            depth_min=cfg.depth_min,
-            depth_max=cfg.depth_max,
-            tsunami_only=cfg.tsunami_only,
-            text_query=cfg.text_query,
-            networks=[s.strip() for s in cfg.networks_csv.split(",") if s.strip()],
-            bbox=cfg.bbox,
-        )
-    # Fallback to HTTP endpoint
-    import requests
-    resp = requests.get(
-        cfg.ds_choice.get_endpoint(start_ms=start_ms, end_ms=end_ms),
-        timeout=15,
+    ds = PostgresORMDataSource()
+    return ds.fetch_geojson(
+        start_ms=start_ms,
+        end_ms=end_ms,
+        mag_min=cfg.mag_min,
+        mag_max=cfg.mag_max,
+        depth_min=cfg.depth_min,
+        depth_max=cfg.depth_max,
+        tsunami_only=cfg.tsunami_only,
+        text_query=cfg.text_query,
+        networks=[s.strip() for s in (cfg.networks_csv or "").split(",") if s.strip()],
+        bbox=cfg.bbox,
     )
-    resp.raise_for_status()
-    return resp.json()

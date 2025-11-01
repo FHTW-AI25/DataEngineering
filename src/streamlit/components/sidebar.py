@@ -4,7 +4,6 @@ import streamlit as st
 import os
 from dotenv import load_dotenv
 
-from data.data_sources import DATA_SOURCES
 from utils.types import AppConfig
 
 # Load .env variables (only once)
@@ -26,10 +25,6 @@ def render_sidebar_return_config() -> AppConfig:
     )
     # JS expects hours/second -> treat 1x..10x as 1..10 hours/second
     speed_hps = float(speed_multiplier)
-
-    ds_choice = st.sidebar.selectbox(
-        "Data source", DATA_SOURCES, format_func=lambda d: d.name()
-    )
 
     MAPBOX_TOKEN = os.getenv("MAPBOX_TOKEN", "")
 
@@ -75,7 +70,6 @@ def render_sidebar_return_config() -> AppConfig:
     bbox = [min_lon, min_lat, max_lon, max_lat] if use_bbox else None
 
     return AppConfig(
-        ds_choice=ds_choice,
         mapbox_token=MAPBOX_TOKEN,
         style_name=style_name,
         style_url=style_url,

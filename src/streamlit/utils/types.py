@@ -5,8 +5,7 @@ from datetime import datetime
 class AppConfig:
     # playback
     speed_hps: float
-    # data source & tokens
-    ds_choice: object
+    # token
     mapbox_token: str
 
     # map config
