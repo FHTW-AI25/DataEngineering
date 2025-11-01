@@ -110,3 +110,28 @@ CREATE TABLE IF NOT EXISTS data_load_log (
 -- Simple index to check latest coverage
 CREATE INDEX IF NOT EXISTS data_load_log_start_idx ON data_load_log(start_time_utc);
 CREATE INDEX IF NOT EXISTS data_load_log_end_idx   ON data_load_log(end_time_utc);
+
+-- One row per completed month; status: 'loaded' (raw written) or 'transformed' (Spark done)
+CREATE TABLE IF NOT EXISTS monthly_loads (
+  month_start TIMESTAMPTZ PRIMARY KEY,            -- e.g. 2025-01-01 00:00:00+00
+  month_end   TIMESTAMPTZ NOT NULL,               -- e.g. 2025-02-01 00:00:00+00 - 1 ms
+  status      TEXT NOT NULL CHECK (status IN ('loaded','transformed')),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  -- month_start must be exactly the first instant of its month at UTC midnight
+  CHECK (
+    month_start =
+      (date_trunc('month', month_start AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+  ),
+
+  -- month_end must be after month_start and <= one millisecond before next month start (UTC)
+  CHECK (
+    month_end > month_start
+    AND month_end <=
+      ((date_trunc('month', month_start AT TIME ZONE 'UTC') + INTERVAL '1 month') AT TIME ZONE 'UTC'
+       - INTERVAL '1 millisecond')
+  )
+);
+
+-- Optionally, keep an index by status to accelerate Spark orchestration:
+CREATE INDEX IF NOT EXISTS monthly_loads_status_idx ON monthly_loads (status);

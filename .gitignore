@@ -1,4 +1,5 @@
 /db/volume/
+/data/usgs_earthquakes/
 /.env
 /.idea/
 /src/streamlit/.streamlit/

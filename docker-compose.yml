@@ -15,3 +15,17 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  extractor:
+    build: ./extractor
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      DATA_DIR: /data/usgs_earthquakes
+      USGS_BASE_URL: https://earthquake.usgs.gov/fdsnws/event/1/query
+    volumes:
+      - ./data:/data
