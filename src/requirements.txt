@@ -1,7 +1,0 @@
-streamlit
-sqlmodel
-geoalchemy2
-# psycopg-binary
-psycopg2-binary
-geopandas
-#fiona
