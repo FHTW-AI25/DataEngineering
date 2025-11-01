@@ -42,3 +42,7 @@ class DataLoader:
         if merged.crs and merged.crs.to_epsg() != 4326:
             merged = merged.to_crs(4326)
         return merged
+
+    def load_all(self):
+        """Convenience: return (eez_land_union, goas)."""
+        return self.load_eez_land_union(), self.load_goas()

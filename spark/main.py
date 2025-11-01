@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 from typing import List, Tuple
+from datetime import datetime
 import os
 from urllib.parse import urlparse
 
@@ -11,9 +12,15 @@ from sqlalchemy import text, bindparam
 from earthquakes_common import get_session
 # spark-only loaders that still use shared DB
 from app.geo.country_sea_manager import CountrySeaManager
+from app.location.location_manager import LocationManager
 
+
+# -----------------------------------------------------------------------------
+# Config
+# -----------------------------------------------------------------------------
 DATA_DIR = Path("/data/usgs_earthquakes")
 STAGING_TABLE = "stg_quake"  # created automatically by Spark write (mode=append)
+POSTGRES_JDBC_JAR = "/opt/jars/postgresql.jar"
 
 # GeoJSON Feature schema (USGS)
 FEATURE_SCHEMA = T.StructType([
@@ -97,24 +104,43 @@ WHEN NOT MATCHED THEN INSERT (
   END
 );
 """)
-
 TRUNCATE_STAGING = text("TRUNCATE TABLE stg_quake;")
 
+
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
 def _to_jdbc_url(db_url: str) -> tuple[str, dict]:
-    """
-    Convert DATABASE_URL (postgresql://user:pass@host:5432/db) to Spark JDBC url & props.
-    """
+    """Convert DATABASE_URL (postgresql://user:pass@host:5432/db) to Spark JDBC url & props."""
     u = urlparse(db_url)
     jdbc = f"jdbc:postgresql://{u.hostname}:{u.port or 5432}{u.path}"
     props = {
         "user": u.username or "",
         "password": u.password or "",
         "driver": "org.postgresql.Driver",
-        "stringtype": "unspecified",  # helps with text/varchar coercion
+        "stringtype": "unspecified",
     }
     return jdbc, props
 
-def months_to_process() -> list[tuple[str, "datetime"]]:
+
+def create_spark() -> SparkSession:
+    """Create a Spark session with the Postgres JDBC jar on driver & executors."""
+    spark = (
+        SparkSession.builder
+        .appName("EarthquakesTransform")
+        .config("spark.jars", POSTGRES_JDBC_JAR)
+        .config("spark.driver.extraClassPath", POSTGRES_JDBC_JAR)
+        .config("spark.executor.extraClassPath", POSTGRES_JDBC_JAR)
+        .getOrCreate()
+    )
+    print("🚀 Spark started:", spark.version)
+    return spark
+
+
+def months_to_process() -> list[tuple[str, datetime]]:
+    """
+    Return months [(ym, month_start)] in status='loaded' that have their parquet present.
+    """
     with get_session() as s:
         rows = s.execute(text("""
             SELECT to_char(month_start AT TIME ZONE 'UTC', 'YYYY-MM') AS ym,
@@ -123,59 +149,23 @@ def months_to_process() -> list[tuple[str, "datetime"]]:
             WHERE status = 'loaded'
             ORDER BY month_start
         """)).all()
-    out = []
+    out: list[tuple[str, datetime]] = []
     for r in rows:
         ym = r.ym
         path = DATA_DIR / ym / f"{ym}.parquet"
         if path.exists():
-            out.append((ym, r.month_start))   # <- keep as datetime, not ISO string
+            out.append((ym, r.month_start))
         else:
             print(f"⚠️  Skipping {ym}: missing {path}")
     return out
 
-def mark_transformed(month_starts: list["datetime"]) -> None:
-    if not month_starts:
-        return
-    stmt = (
-        text("""
-            UPDATE monthly_loads
-               SET status = 'transformed', updated_at = NOW()
-             WHERE month_start IN :arr
-        """)
-        .bindparams(bindparam("arr", expanding=True))   # <- expanding list
-    )
-    with get_session() as s:
-        s.execute(stmt, {"arr": month_starts})
-        s.commit()
 
-def main():
-    # 0) Fill reference lookups first (transform step)
-    c, s = CountrySeaManager().fill_all()
-    print(f"✅ Lookups loaded: countries={c}, seas={s}")
-
-    # 1) Spark session (JDBC driver jar path is set via spark.jars)
-    spark = (
-        SparkSession.builder
-        .appName("EarthquakesTransform")
-        .config("spark.jars", "/opt/jars/postgresql.jar")
-        .config("spark.driver.extraClassPath", "/opt/jars/postgresql.jar")
-        .config("spark.executor.extraClassPath", "/opt/jars/postgresql.jar")
-        .getOrCreate()
-    )
-    print("🚀 Spark started:", spark.version)
-
-    # 2) Decide which months to process
-    months = months_to_process()
-    if not months:
-        print("ℹ️ No months in status='loaded' with parquet present.")
-        spark.stop()
-        return
-
-    # 3) Read ALL monthly parquet files in parallel
+def build_quake_df(spark: SparkSession, months: list[tuple[str, datetime]]):
+    """Read monthly parquet, parse GeoJSON Feature, project to target quake columns."""
     paths = [str(DATA_DIR / ym / f"{ym}.parquet") for ym, _ in months]
-    raw = spark.read.parquet(*paths)  # column: json (string)
-    # Parse GeoJSON → structured cols
+    raw = spark.read.parquet(*paths)  # json column
     parsed = raw.select(F.from_json("json", FEATURE_SCHEMA).alias("f")).select("f.*")
+
     df = parsed.select(
         F.col("id").alias("usgs_id"),
         F.col("properties.mag").alias("mag"),
@@ -195,40 +185,124 @@ def main():
         F.col("geometry.coordinates").getItem(0).alias("lon"),
         F.col("geometry.coordinates").getItem(1).alias("lat"),
     ).filter(F.col("usgs_id").isNotNull())
+    return df
 
-    # 4) Parallel JDBC write to a staging table
-    db_url = os.environ["DATABASE_URL"]
-    jdbc_url, jdbc_props = _to_jdbc_url(db_url)
 
+def write_staging(df, spark: SparkSession):
+    """Parallel JDBC write → staging table."""
+    jdbc_url, jdbc_props = _to_jdbc_url(os.environ["DATABASE_URL"])
     target_partitions = max(8, spark.sparkContext.defaultParallelism)
     (
         df.repartition(target_partitions)
-        .write
-        .format("jdbc")
-        .option("url", jdbc_url)
-        .option("dbtable", STAGING_TABLE)
-        .option("batchsize", 5000)
-        .option("isolationLevel", "READ_COMMITTED")
-        .options(**jdbc_props)  # <-- add this (user, password, driver, stringtype)
-        .mode("append")
-        .save()
+          .write
+          .format("jdbc")
+          .option("url", jdbc_url)
+          .option("dbtable", STAGING_TABLE)
+          .option("batchsize", 5000)
+          .option("isolationLevel", "READ_COMMITTED")
+          .options(**jdbc_props)
+          .mode("append")
+          .save()
     )
     print(f"🧾 Wrote {STAGING_TABLE} via JDBC (parallel).")
 
-    # 5) Server-side MERGE into quake + TRUNCATE staging
+
+def merge_and_truncate():
+    """Server-side MERGE from staging → quake, then TRUNCATE staging."""
     with get_session() as s:
         s.execute(MERGE_SQL)
         s.execute(TRUNCATE_STAGING)
         s.commit()
     print("🔀 MERGE done; staging truncated.")
 
-    # 6) Mark all processed months as transformed
-    month_starts = [ms for _, ms in months]  # these are datetime objects
-    mark_transformed(month_starts)
+
+def fetch_month_bounds(month_starts: list[datetime]) -> dict[datetime, datetime]:
+    """Return {month_start -> month_end} for the given month_starts."""
+    if not month_starts:
+        return {}
+    stmt = (
+        text("""
+            SELECT month_start, month_end
+            FROM monthly_loads
+            WHERE month_start IN :arr
+        """).bindparams(bindparam("arr", expanding=True))
+    )
+    with get_session() as s:
+        rows = s.execute(stmt, {"arr": month_starts}).fetchall()
+    return {r.month_start: r.month_end for r in rows}
+
+
+def update_locations_for_months(months: list[tuple[str, datetime]], month_bounds: dict[datetime, datetime]) -> int:
+    """Resolve & upsert locations per processed month; returns total upserts."""
+    loc_mgr = LocationManager()
+    total = 0
+    for _, mstart in months:
+        mend_inclusive = month_bounds.get(mstart)
+        if mend_inclusive is None:
+            continue
+        up = loc_mgr.upsert_locations_for_month(mstart, mend_inclusive)
+        total += up
+        print(f"🌍 Locations upserted for {mstart.date()}: {up}")
+    print(f"🌍 Total locations upserted this run: {total}")
+    return total
+
+
+def mark_transformed(month_starts: list[datetime]) -> None:
+    """Flip monthly_loads.status to 'transformed' for processed months."""
+    if not month_starts:
+        return
+    stmt = (
+        text("""
+            UPDATE monthly_loads
+               SET status = 'transformed', updated_at = NOW()
+             WHERE month_start IN :arr
+        """).bindparams(bindparam("arr", expanding=True))
+    )
+    with get_session() as s:
+        s.execute(stmt, {"arr": month_starts})
+        s.commit()
     print(f"🏁 Marked {len(month_starts)} month(s) as transformed.")
 
+
+# -----------------------------------------------------------------------------
+# Orchestration
+# -----------------------------------------------------------------------------
+def main():
+    # Step 0) Transform-setup: load lookup tables (country, sea)
+    c, s = CountrySeaManager().fill_all()
+    print(f"✅ Lookups loaded: countries={c}, seas={s}")
+
+    # Step 1) Start Spark
+    spark = create_spark()
+
+    # Step 2) Determine months to process (status='loaded' & parquet present)
+    months = months_to_process()
+    if not months:
+        print("ℹ️ No months to process.")
+        spark.stop()
+        return
+
+    # Step 3) Build normalized DataFrame
+    df = build_quake_df(spark, months)
+
+    # Step 4) Write to staging via JDBC (parallel)
+    write_staging(df, spark)
+
+    # Step 5) Server-side MERGE → quake; TRUNCATE staging
+    merge_and_truncate()
+
+    # Step 6) Update locations per processed month
+    month_starts = [ms for _, ms in months]
+    bounds = fetch_month_bounds(month_starts)
+    update_locations_for_months(months, bounds)
+
+    # Step 7) Mark months as transformed
+    mark_transformed(month_starts)
+
+    # Done
     spark.stop()
     print("🎉 Transform complete.")
+
 
 if __name__ == "__main__":
     main()
