@@ -1,7 +1,7 @@
 services:
   db:
     image: postgis/postgis:16-3.4
-    container_name: earthquakes-db
+    container_name: db
     restart: unless-stopped
     env_file:
       - .env
@@ -34,7 +34,7 @@ services:
 
   spark:
     build:
-      context: .                 # project root so we can COPY common/
+      context: .               # project root
       dockerfile: spark/Dockerfile
     container_name: spark
     depends_on:
@@ -42,9 +42,9 @@ services:
         condition: service_healthy
       extractor:
         condition: service_completed_successfully
-    env_file:
-      - .env
+    env_file: [ .env ]
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      DATA_ROOT: "/data"
     volumes:
       - ./data:/data
