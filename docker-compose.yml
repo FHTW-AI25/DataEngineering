@@ -33,7 +33,9 @@ services:
       - ./data:/data
 
   spark:
-    build: ./spark
+    build:
+      context: .                 # project root so we can COPY common/
+      dockerfile: spark/Dockerfile
     container_name: spark
     depends_on:
       db:
