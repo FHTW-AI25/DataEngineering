@@ -22,7 +22,7 @@ class AppConfig:
     # Filters
     location_mode: LocationMode
     filter_by_country: bool
-    country_isos: Optional[List[str]]
+    country_isos: List[str]
     mag_min: float
     mag_max: float
     depth_min: float
