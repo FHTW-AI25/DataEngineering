@@ -39,11 +39,21 @@ cd DataEngineering
 ```
 
 After this step, your directory should contain:
-- `environment.yml`
-- `docker-compose.yml`
-- `README.md`
-- `src/`
+- `common/`
+- `data/`
+- `db/`
+- `dev/`
+- `docs/`
+- `extractor/`
 - `scripts/`
+- `spark/`
+- `src/`
+- `.env.example`
+- `.gitignore`
+- `docker-compose.yml`
+- `environment.yml`
+- `README.md`
+
 
 ---
 
@@ -51,13 +61,7 @@ After this step, your directory should contain:
 This will:
 - Create a new Conda environment named `data-engineering`
 - Install **Python 3.12**
-- Install `geopandas` from Conda
 - Install additional packages via pip:
-  - Streamlit 1.50.0  
-  - SQLModel 0.0.27  
-  - GeoAlchemy2 0.18.0  
-  - psycopg2-binary 2.9.11
-  - python-dotenv 1.2.1
 
 ```bash
 conda env create -f environment.yml
@@ -94,6 +98,11 @@ POSTGRES_PORT=5432
 PGDATA=/var/lib/postgresql/data
 
 MAPBOX_TOKEN=pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjazU4M3h0czYwMDA0M2RsbGZ4MHR0cTFuIn0.abc123
+
+MONTHS_BEFORE_CURRENT=12
+REQUEST_TIMEOUT_SECONDS=10
+REQUEST_SLEEP_SECONDS=0.2
+MAX_SPLIT_RETRIES=3
 ```
 
 ---
@@ -106,127 +115,70 @@ MAPBOX_TOKEN=pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjazU4M3h0czYwMDA0M2RsbGZ4MHR0cTFuIn0.
 
 ---
 
-#### 5. Start Docker services
-Ensure Docker Desktop is running, then start all containers:
+#### 5. Build and start the Docker services
+Before starting, ensure **Docker Desktop** (or Docker Engine on Linux) is running.
+
+Build and start all containers with:
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
-This starts:
-- **db** → PostGIS database  
-- **spark** → Spark processing container  
-- **streamlit** → Streamlit frontend (if defined in compose file)
+This will:
+- Build and start **three services**:
+  - 🐘 **db** → PostgreSQL + PostGIS database  
+  - ⚙️ **extractor** → earthquake data ingestion pipeline  
+  - 🔥 **spark** → Spark job processor  
 
 Data persistence:
-- Database data stored in `src/db/volume/`
-- Initialization SQL scripts in `src/db/init/`
+- Database data is stored in `db/volume/`
+- Extracted earthquake data is stored in `data/usgs_earthquakes/`
 
-Verify containers are running:
+Verify the containers are running:
 ```bash
 docker ps
 ```
 
+Once running, the PostGIS database will be available on **localhost:5432** (unless changed in `.env`).
+
 ---
 
-#### 6. Run Streamlit frontend
-You can run Streamlit in two ways:
+#### 6. Run the Streamlit frontend (locally)
+Unlike the other components, **Streamlit is not containerized** — it runs directly on your local machine using the Conda environment you set up.
 
-**Option A: Local Conda environment (recommended for development)**
+To start it:
+
 ```bash
 streamlit run src/streamlit/mainpage.py
 ```
-Then open [http://localhost:8501](http://localhost:8501)
 
-**Option B: Inside Docker (for consistent deployment)**
+This will launch the app at:
+
+👉 [http://localhost:8501](http://localhost:8501)
+
+> The Streamlit app connects to the PostGIS container (database host: `localhost` when running locally, `db` if run inside Docker).
+
+---
+
+#### 🧹 Optional: Restart and clean up
+If you want to **reset everything**, use the provided `restart.sh` script.
+
+This script will:
+- Stop and remove all Docker containers
+- Remove locally created data volumes and files (`db/volume/` and `data/usgs_earthquakes/`)
+
+Run it from the project root:
+
 ```bash
-docker compose up -d streamlit
+bash scripts/restart.sh
 ```
-Then visit [http://localhost:8501](http://localhost:8501)
 
-> When using Docker, the database host is `db`.  
-> When running locally, use `localhost`.
-
----
-
-#### 7. Verify your setup
-Run a quick check to confirm everything imports correctly:
+After cleanup, you can rebuild and restart everything with:
 
 ```bash
-python -c "import geopandas, streamlit, sqlmodel, geoalchemy2, psycopg2; print('✅ All imports OK')"
-```
-
-Expected output:
-```
-✅ All imports OK
+docker compose up -d --build
 ```
 
 ---
-
-### Useful Commands
-
-| Action | Command |
-|--------|----------|
-| Create environment | `conda env create -f environment.yml` |
-| Update environment | `conda env update -f environment.yml --prune` |
-| Activate environment | `conda activate data-engineering-py314` |
-| Deactivate environment | `conda deactivate` |
-| Remove environment | `conda env remove -n data-engineering-py314` |
-| Start all Docker services | `docker compose up -d` |
-| Stop all Docker services | `docker compose down` |
-| Run Streamlit app locally | `streamlit run src/streamlit/mainpage.py` |
-| Check running containers | `docker ps` |
-
----
-
-## Project Structure
-
-```
-{project-directory}/
-├── README.md                # Project documentation
-├── .env.example             # Template for environment variables
-├── .env                     # Local configuration (not in Git)
-├── environment.yml          # Conda + pip environment specification
-├── docker-compose.yml       # Defines database, Spark, Streamlit containers
-│
-├── scripts/                 # Automation and helper scripts
-│   ├── start_all.sh
-│   ├── stop_all.sh
-│   ├── rebuild.sh
-│   └── run_frontend.sh
-│
-├── src/
-│   ├── streamlit/           # Streamlit app files
-│   │   ├── mainpage.py
-│   │   ├── components/
-│   │   └── utils/
-│   │
-│   ├── db/                  # Database setup & volume
-│   │   ├── init/
-│   │   └── volume/
-│   │
-│   ├── spark/               # Spark Docker + job definitions
-│   │   ├── Dockerfile
-│   │   ├── jobs/
-│   │   └── scripts/
-│   │
-│   ├── data/                # Local data files (gitignored)
-│   └── utils/               # Shared helper scripts
-│
-└── tests/                   # Unit / integration tests
-```
-
----
-
-## Quick Recap
-
-1. `conda env create -f environment.yml`  
-2. `conda activate data-engineering-py314`  
-3. `cp .env.example .env` and edit values  
-4. `docker compose up -d`  
-5. `streamlit run src/streamlit/mainpage.py`
-
-You’re all set 🚀
-
 
 * Google Colab for Earthquake Data Collection from USGS using Apache Spark: https://colab.research.google.com/drive/1C2iNmma_JU0TZpWjOTD6zj5_JgSiFg50
