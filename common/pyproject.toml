@@ -1,0 +1,17 @@
+[project]
+name = "earthquakes-common"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "sqlmodel==0.0.27",
+  "psycopg2-binary==2.9.11",
+  "geoalchemy2==0.18.0",
+  "python-dotenv==1.2.1",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

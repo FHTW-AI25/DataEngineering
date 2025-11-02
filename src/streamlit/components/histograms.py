@@ -43,7 +43,7 @@ def render_mag_hist(gj: Dict[str, Any]) -> None:
             with st.expander("Summary stats", expanded=False):
                 st.write(mag_df["mag"].describe().to_frame("Magnitudes"))
         else:
-            st.info("No events found for selected filters.")
+            st.info("No earthquakes matched the current filters.")
     except Exception as e:
         st.error(f"Failed to render magnitude histogram: {e}")
 
@@ -69,6 +69,6 @@ def render_depth_hist(gj: Dict[str, Any]) -> None:
             with st.expander("Summary stats", expanded=False):
                 st.write(depth_df["depth_km"].describe().to_frame("Depth (km)"))
         else:
-            st.info("No events found for selected filters.")
+            st.info("No earthquakes matched the current filters.")
     except Exception as e:
         st.error(f"Failed to render depth histogram: {e}")
