@@ -1,6 +1,5 @@
 import streamlit as st
 
-from earthquakes_common import get_session
 from utils.utils import fetch_geojson_for_cfg
 from components.sidebar import render_sidebar_return_config
 from components.map_view import render_map
@@ -31,7 +30,7 @@ except Exception as e:
 # --------------------
 render_map(config, geojson)
 
-st.subheader("Event Data Table")
+st.subheader("Earthquake Table")
 render_table(geojson)
 
 st.subheader("Distributions")

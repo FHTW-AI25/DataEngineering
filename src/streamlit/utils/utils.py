@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional, Sequence
 from datetime import datetime, timezone
 
 from sqlmodel import select
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_, func, Table, Column, Integer, Text, MetaData, exists, select as sa_select
 
 from earthquakes_common import get_session, Quake
 from utils.types import AppConfig
@@ -108,6 +108,15 @@ def to_iso(ts_ms: Optional[int]) -> str:
 # Embedded Postgres ORM data source
 # -------------------------------------
 
+# Lightweight table object for location so we can build EXISTS predicates
+_metadata = MetaData()
+location_tbl = Table(
+    "location", _metadata,
+    Column("quake_id", Integer),
+    Column("country_iso", Text),
+    Column("sea_id", Integer),
+)
+
 class PostgresORMDataSource:
     """ORM-backed PostgreSQL data source that returns GeoJSON."""
     def name(self) -> str:
@@ -129,7 +138,9 @@ class PostgresORMDataSource:
         text_query: str,
         networks: Sequence[str],
         bbox: Optional[Sequence[float]],
-        limit: int = 5000,
+        location_mode: str = "both",
+        filter_by_country: bool = False,
+        country_isos: Sequence[str] = (),
     ) -> Dict[str, Any]:
         """Build SQL with expressions, run via session.exec, return FeatureCollection."""
 
@@ -137,16 +148,18 @@ class PostgresORMDataSource:
         start_dt = datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc)
         end_dt   = datetime.fromtimestamp(end_ms   / 1000, tz=timezone.utc)
 
-        # Conditions
+        # Base conditions
         conds = [
             Quake.time_utc.between(start_dt, end_dt),
             Quake.mag.between(mag_min, mag_max),
             Quake.depth_km.between(depth_min, depth_max),
         ]
 
+        # Tsunami filter
         if tsunami_only:
             conds.append(Quake.tsunami == 1)
 
+        # Text search
         tq = (text_query or "").strip().lower()
         if tq:
             like = f"%{tq}%"
@@ -155,11 +168,12 @@ class PostgresORMDataSource:
                 func.lower(Quake.title).ilike(like),
             ))
 
-        nets = [n.strip().lower() for n in networks or [] if n.strip()]
-        if nets:
-            conds.append(func.lower(Quake.net).in_(nets))
+#        # Networks filter
+#        nets = [n.strip().lower() for n in networks or [] if n.strip()]
+#        if nets:
+#            conds.append(func.lower(Quake.net).in_(nets))
 
-        # BBOX filter
+        # BBOX filter (uses PostGIS)
         if bbox:
             min_lon, min_lat, max_lon, max_lat = bbox
             conds.append(
@@ -169,12 +183,48 @@ class PostgresORMDataSource:
                 )
             )
 
+        # Location filter (land/sea)
+        if (location_mode or "both").lower() == "land":
+            conds.append(
+                exists(sa_select(location_tbl.c.quake_id).where(
+                    location_tbl.c.quake_id == Quake.id,
+                    location_tbl.c.sea_id.is_(None),
+                ))
+            )
+        elif (location_mode or "both").lower() == "sea":
+            conds.append(
+                exists(sa_select(location_tbl.c.quake_id).where(
+                    location_tbl.c.quake_id == Quake.id,
+                    location_tbl.c.sea_id.is_not(None),
+                ))
+            )
+
+        # Country filter
+        if filter_by_country:
+            iso_list = [c.lower() for c in (country_isos or [])]
+            if len(iso_list) == 0:
+                # Enabled, but no countries selected → country_iso IS NULL
+                conds.append(
+                    exists(sa_select(location_tbl.c.quake_id).where(
+                        location_tbl.c.quake_id == Quake.id,
+                        location_tbl.c.country_iso.is_(None),
+                    ))
+                )
+            else:
+                # Enabled, some countries selected → country_iso IN (...)
+                conds.append(
+                    exists(sa_select(location_tbl.c.quake_id).where(
+                        location_tbl.c.quake_id == Quake.id,
+                        func.lower(location_tbl.c.country_iso).in_(iso_list),
+                    ))
+                )
+        # else: not enabled → don’t add any country predicate
+
         # Statement
         stmt = (
             select(Quake)
             .where(and_(*conds))
             .order_by(Quake.time_utc.desc())
-            .limit(limit)
         )
 
         # Fetch rows
@@ -232,6 +282,9 @@ def fetch_geojson_for_cfg(cfg: AppConfig) -> Dict[str, Any]:
         depth_max=cfg.depth_max,
         tsunami_only=cfg.tsunami_only,
         text_query=cfg.text_query,
-        networks=[s.strip() for s in (cfg.networks_csv or "").split(",") if s.strip()],
+        networks=[],  # not used anymore
         bbox=cfg.bbox,
+        location_mode=cfg.location_mode,
+        filter_by_country=cfg.filter_by_country,
+        country_isos=cfg.country_isos,
     )
