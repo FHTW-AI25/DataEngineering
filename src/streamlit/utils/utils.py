@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from sqlmodel import select
 from sqlalchemy import and_, or_, func, Table, Column, Integer, Text, MetaData, exists, select as sa_select
 
-from earthquakes_common import get_session, Quake
+from earthquakes_common import get_session, Quake, Location, Sea, Country
 from utils.types import AppConfig
 
 
@@ -85,6 +85,10 @@ def features_to_dataframe(gj: Dict[str, Any]) -> pd.DataFrame:
                 "net": p.get("net"),
                 "tsunami": p.get("tsunami"),
                 "url": p.get("url"),
+                # Optional fields
+                "country_iso": p.get("country_iso") or "",
+                "country_name": p.get("country_name") or "",
+                "sea_name": p.get("sea_name") or "",
             })
 
     df = pd.DataFrame(rows)
@@ -222,7 +226,15 @@ class PostgresORMDataSource:
 
         # Statement
         stmt = (
-            select(Quake)
+            select(
+                Quake,
+                Location.country_iso.label("country_iso"),
+                Country.name.label("country_name"),
+                Sea.name.label("sea_name"),
+            )
+            .join(Location, Location.quake_id == Quake.id, isouter=True)
+            .join(Country, Country.iso == Location.country_iso, isouter=True)
+            .join(Sea, Sea.id == Location.sea_id, isouter=True)
             .where(and_(*conds))
             .order_by(Quake.time_utc.desc())
         )
@@ -231,7 +243,16 @@ class PostgresORMDataSource:
         with get_session() as session:
             rows: List[Quake] = session.exec(stmt).all()
 
-        return {"type": "FeatureCollection", "features": [feat(r) for r in rows]}
+        features = []
+        for q, country_iso, country_name, sea_name in rows:
+            extras = {
+                "country_iso": country_iso,
+                "country_name": country_name,
+                "sea_name": sea_name,
+            }
+            features.append(feat(q, extras))
+
+        return {"type": "FeatureCollection", "features": features}
 
 
 # --- Helper methods for GeoJSON feature building ---
@@ -239,25 +260,34 @@ class PostgresORMDataSource:
 def to_epoch_ms(ts: Optional[datetime]) -> Optional[int]:
     return int(ts.timestamp() * 1000) if ts else None
 
-def feat(entity: Quake) -> Dict[str, Any]:
+def feat(entity: Quake, extras: dict | None = None) -> dict:
     coords = None
     if entity.lon is not None and entity.lat is not None:
         coords = [float(entity.lon), float(entity.lat)]
+
+    props = {
+        "time": to_epoch_ms(entity.time_utc) or 0,
+        "mag": float(entity.mag) if entity.mag is not None else None,
+        "place": entity.place,
+        "depth_km": float(entity.depth_km) if entity.depth_km is not None else None,
+        "lon": float(entity.lon) if entity.lon is not None else None,
+        "lat": float(entity.lat) if entity.lat is not None else None,
+        "tsunami": int(entity.tsunami) if entity.tsunami is not None else 0,
+        "net": entity.net,
+        "url": entity.url,
+        "title": entity.title,
+    }
+
+    if extras:
+        # Only add non-empty extras
+        for k, v in extras.items():
+            if v is not None:
+                props[k] = v
+
     return {
         "type": "Feature",
         "geometry": {"type": "Point", "coordinates": coords} if coords else None,
-        "properties": {
-            "time": to_epoch_ms(entity.time_utc) or 0,
-            "mag": float(entity.mag) if entity.mag is not None else None,
-            "place": entity.place,
-            "depth_km": float(entity.depth_km) if entity.depth_km is not None else None,
-            "lon": float(entity.lon) if entity.lon is not None else None,
-            "lat": float(entity.lat) if entity.lat is not None else None,
-            "tsunami": int(entity.tsunami) if entity.tsunami is not None else 0,
-            "net": entity.net,
-            "url": entity.url,
-            "title": entity.title,
-        },
+        "properties": props,
     }
 
 

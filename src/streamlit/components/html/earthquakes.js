@@ -75,6 +75,9 @@ function updateTable(filtered) {
         const tsu = p.tsunami || 0;
         const place = p.place || p.title || '—';
         const url = p.url || '#';
+        const country_iso = p.country_iso || '';
+        const country_name = p.country_name || '';
+        const sea_name = p.sea_name || '';
 
         html += `<tr data-lon="${lon}" data-lat="${lat}" data-zoom="5">
                   <td class="mono">${formatIso(time_ms)}</td>
@@ -86,6 +89,9 @@ function updateTable(filtered) {
                   <td class="mono">${lon}</td>
                   <td class="mono">${lat}</td>
                   <td><a class="link" href="${url}" target="_blank">open</a></td>
+                  <td>${country_iso}</td>
+                  <td>${country_name}</td>
+                  <td>${sea_name}</td>
                 </tr>`;
     }
     tbody.innerHTML = html;
