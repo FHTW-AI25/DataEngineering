@@ -11,3 +11,7 @@ dependencies:
       - sqlmodel==0.0.27
       - geoalchemy2==0.18.0
       - python-dotenv==1.2.1
+      - jupyter==1.1.1
+      - matplotlib==3.9.3
+      - seaborn==0.13.2
+      - pandas==2.2.3
