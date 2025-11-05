@@ -444,10 +444,6 @@ docker compose up -d --build
 
 ---
 
-**Additional Resources:**
-
-* Google Colab for Earthquake Data Collection from USGS using Apache Spark: https://colab.research.google.com/drive/1C2iNmma_JU0TZpWjOTD6zj5_JgSiFg50
-
 ## Conclusion
 
 This earthquake data engineering pipeline successfully demonstrates modern data engineering practices by building a complete ETL system that extracts global seismic data, enriches it with geospatial context, and provides an intuitive visualization interface. By leveraging containerization (Docker), data processing with Apache Spark, geospatial databases (PostGIS), and interactive visualization (Streamlit with Mapbox), the project addresses the challenge of making complex earthquake data accessible to non-technical users.
@@ -461,3 +457,15 @@ Key technical achievements include:
 - Providing rich interactive visualizations with multiple map styles, animated playback, and statistical distributions
 
 The project provides a solid foundation for future enhancements such as real-time streaming architectures and machine learning integration for earthquake prediction.
+
+## Data Sources
+
+* [Global Oceans and Seas v01 (2021‑12‑14)](https://www.marineregions.org/sources.php) — This dataset represents the boundaries between the 10 main oceans and seas (Arctic Ocean, North and South Atlantic Ocean, North and South Pacific Ocean, Southern Ocean, Indian Ocean, Baltic Sea, Mediterranean Region, South China and Eastern Archipelagic Seas). The boundaries are largely based on *“Limits of Oceans & Seas, Special Publication No. 23”* published by the International Hydrographic Organization in 1953. The dataset is available in World Geodetic System of 1984 (WGS84) and was composed by the Flanders Marine Data Centre.
+
+* [Marine and Land Zones: Union of World Country Boundaries and EEZs, Version 4 (2024‑10‑10)](https://www.marineregions.org/sources.php) — This dataset combines the boundaries of world countries and the Exclusive Economic Zones (EEZs). It was created by merging the ESRI world country database and the EEZ V12 dataset.
+
+* **Earthquake Data API** — The Earthquake Catalog API provided by the U.S. Geological Survey (USGS) with base URL `https://earthquake.usgs.gov/fdsnws/event/1/` offers global information on seismic events: when and where earthquakes occur, how strong they are (magnitude), how deep they originate, and other contextual details such as tsunami risk or whether people reported feeling the quake. The service supports both real‑time and historical earthquake data for global analysis.
+
+**Additional Resources:**
+
+* Google Colab for Earthquake Data Collection from USGS using Apache Spark: https://colab.research.google.com/drive/1C2iNmma_JU0TZpWjOTD6zj5_JgSiFg50
